@@ -3,10 +3,120 @@ const router = express.Router();
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
+
+/**
+ * @swagger
+ * tags:
+ *   name: Hand Motions
+ *   description: API quản lý dữ liệu chuyển động tay (AI Motion Tracking) trong bài học
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     HandMotion:
+ *       type: object
+ *       properties:
+ *         motion_id:
+ *           type: integer
+ *           example: 1
+ *         lesson_id:
+ *           type: integer
+ *           example: 5
+ *         model_id:
+ *           type: integer
+ *           example: 2
+ *         motion_data:
+ *           type: string
+ *           description: Dữ liệu JSON hoặc chuỗi chứa toạ độ chuyển động tay
+ *           example: '{"x":120,"y":250,"timestamp":1697032200}'
+ *         description:
+ *           type: string
+ *           example: "Mô phỏng động tác nhấn dây trong đàn tranh"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-10-10T10:00:00Z"
+ *
+ *     CreateHandMotionRequest:
+ *       type: object
+ *       required:
+ *         - lesson_id
+ *         - model_id
+ *         - motion_data
+ *       properties:
+ *         lesson_id:
+ *           type: integer
+ *           example: 5
+ *         model_id:
+ *           type: integer
+ *           example: 2
+ *         motion_data:
+ *           type: string
+ *           example: '{"motion":"up-down","accuracy":98.7}'
+ *         description:
+ *           type: string
+ *           example: "Mô hình AI ghi nhận động tác đúng chuẩn"
+ *
+ *     UpdateHandMotionRequest:
+ *       type: object
+ *       required:
+ *         - lesson_id
+ *         - model_id
+ *         - motion_data
+ *       properties:
+ *         lesson_id:
+ *           type: integer
+ *           example: 5
+ *         model_id:
+ *           type: integer
+ *           example: 2
+ *         motion_data:
+ *           type: string
+ *           example: '{"motion":"down-up","accuracy":96.5}'
+ *         description:
+ *           type: string
+ *           example: "Cập nhật mô phỏng động tác mới"
+ */
+
+/**
+ * @swagger
+ * /api/hand-motions/ping:
+ *   get:
+ *     summary: Kiểm tra API hoạt động
+ *     tags: [Hand Motions]
+ *     responses:
+ *       200:
+ *         description: API hoạt động tốt
+ *         content:
+ *           text/plain:
+ *             example: "Hand Motions API is working!"
+ */
+
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Hand Motions API is working!");
 });
+
+/**
+ * @swagger
+ * /api/hand-motions:
+ *   get:
+ *     summary: Lấy danh sách tất cả hand motions
+ *     tags: [Hand Motions]
+ *     responses:
+ *       200:
+ *         description: Danh sách các hand motion
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/HandMotion'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/hand-motions
@@ -22,6 +132,32 @@ router.get("/", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/hand-motions/{id}:
+ *   get:
+ *     summary: Lấy hand motion theo ID
+ *     tags: [Hand Motions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của hand motion
+ *     responses:
+ *       200:
+ *         description: Thông tin chi tiết hand motion
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HandMotion'
+ *       404:
+ *         description: Không tìm thấy hand motion
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/hand-motions/:id
@@ -44,6 +180,29 @@ router.get("/:id", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/hand-motions/create:
+ *   post:
+ *     summary: Tạo mới hand motion (chỉ admin hoặc employee)
+ *     tags: [Hand Motions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateHandMotionRequest'
+ *     responses:
+ *       201:
+ *         description: Tạo hand motion thành công
+ *       400:
+ *         description: Thiếu hoặc sai dữ liệu đầu vào
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 POST /api/hand-motions
@@ -95,6 +254,38 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/hand-motions/{id}:
+ *   put:
+ *     summary: Cập nhật hand motion (chỉ admin hoặc employee)
+ *     tags: [Hand Motions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của hand motion cần cập nhật
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateHandMotionRequest'
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       404:
+ *         description: Không tìm thấy hand motion
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 PUT /api/hand-motions/:id
@@ -151,6 +342,30 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/hand-motions/{id}:
+ *   delete:
+ *     summary: Xóa hand motion (chỉ admin hoặc employee)
+ *     tags: [Hand Motions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của hand motion cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
+ *       404:
+ *         description: Không tìm thấy hand motion
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 DELETE /api/hand-motions/:id

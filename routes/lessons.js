@@ -3,6 +3,80 @@ const router = express.Router();
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Lessons
+ *   description: API quản lý bài học trong hệ thống khóa học
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Lesson:
+ *       type: object
+ *       properties:
+ *         lesson_id:
+ *           type: integer
+ *           example: 1
+ *         course_id:
+ *           type: integer
+ *           example: 2
+ *         lesson_name:
+ *           type: string
+ *           example: "Introduction to Đàn Tranh"
+ *         description:
+ *           type: string
+ *           example: "Hướng dẫn cơ bản về cấu tạo và cách chơi đàn Tranh."
+ *         video_url:
+ *           type: string
+ *           example: "https://example.com/video.mp4"
+ *         picture_url:
+ *           type: string
+ *           example: "https://example.com/image.jpg"
+ *         is_free:
+ *           type: boolean
+ *           example: true
+ *         created_at:
+ *           type: string
+ *           example: "2025-10-07T12:00:00Z"
+ *     CreateLesson:
+ *       type: object
+ *       required:
+ *         - course_id
+ *         - lesson_name
+ *       properties:
+ *         course_id:
+ *           type: integer
+ *           example: 1
+ *         lesson_name:
+ *           type: string
+ *           example: "Cách lên dây đàn Tranh"
+ *         description:
+ *           type: string
+ *           example: "Chi tiết từng bước trong việc lên dây đàn Tranh."
+ *         video_url:
+ *           type: string
+ *           example: "https://example.com/lesson1.mp4"
+ *         picture_url:
+ *           type: string
+ *           example: "https://example.com/lesson1.jpg"
+ *         is_free:
+ *           type: boolean
+ *           example: false
+ */
+
+/**
+ * @swagger
+ * /api/payments/ping:
+ *   get:
+ *     summary: Kiểm tra API hoạt động
+ *     tags: [Payments]
+ *     responses:
+ *       200:
+ *         description: Lessons API is working
+ */
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Lessons API is working!");
@@ -22,6 +96,51 @@ router.get("/", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/lessons:
+ *   get:
+ *     summary: Lấy danh sách tất cả bài học
+ *     tags: [Lessons]
+ *     responses:
+ *       200:
+ *         description: Danh sách bài học được trả về
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Lesson'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
+/**
+ * @swagger
+ * /api/lessons/{id}:
+ *   get:
+ *     summary: Lấy thông tin chi tiết một bài học theo ID
+ *     tags: [Lessons]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của bài học
+ *     responses:
+ *       200:
+ *         description: Trả về thông tin bài học
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Lesson'
+ *       404:
+ *         description: Không tìm thấy bài học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/lessons/:id
@@ -44,6 +163,35 @@ router.get("/:id", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/lessons/create:
+ *   post:
+ *     summary: Thêm mới một bài học (Admin hoặc Employee)
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateLesson'
+ *     responses:
+ *       201:
+ *         description: Tạo bài học thành công
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "✅ Lesson added successfully"
+ *       400:
+ *         description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+ *       401:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 POST /api/lessons
@@ -86,6 +234,40 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/lessons/{id}:
+ *   put:
+ *     summary: Cập nhật thông tin bài học theo ID (Admin hoặc Employee)
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của bài học cần cập nhật
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateLesson'
+ *     responses:
+ *       200:
+ *         description: Cập nhật bài học thành công
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "✅ Lesson updated successfully"
+ *       404:
+ *         description: Không tìm thấy bài học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 PUT /api/lessons/:id
@@ -137,6 +319,34 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/lessons/{id}:
+ *   delete:
+ *     summary: Xóa bài học theo ID (Admin hoặc Employee)
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của bài học cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "✅ Lesson deleted successfully"
+ *       404:
+ *         description: Không tìm thấy bài học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 DELETE /api/lessons/:id

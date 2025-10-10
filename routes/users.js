@@ -4,10 +4,88 @@ const bcrypt = require("bcryptjs");
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Users
+ *   description: API quản lý người dùng trong hệ thống
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     User:
+ *       type: object
+ *       properties:
+ *         user_id:
+ *           type: integer
+ *           example: 1
+ *         email:
+ *           type: string
+ *           example: "user@example.com"
+ *         full_name:
+ *           type: string
+ *           example: "Nguyen Van A"
+ *         phone_number:
+ *           type: string
+ *           example: "0912345678"
+ *         role:
+ *           type: string
+ *           example: "customer"
+ *         date_of_birth:
+ *           type: string
+ *           format: date
+ *           example: "2000-05-20"
+ *         picture:
+ *           type: string
+ *           example: "https://example.com/avatar.jpg"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-10-05T08:00:00Z"
+ */
+
+
+/**
+ * @swagger
+ * /api/users/ping:
+ *   get:
+ *     summary: Kiểm tra API hoạt động
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: Users API is working
+ */
+
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Users API is working!");
 });
+
+
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Lấy danh sách tất cả người dùng (chỉ admin)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách người dùng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/User'
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 Lấy tất cả người dùng
@@ -27,6 +105,37 @@ router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   get:
+ *     summary: Lấy thông tin người dùng theo ID
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         description: ID người dùng
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Thông tin người dùng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       403:
+ *         description: Không có quyền xem người khác
+ *       404:
+ *         description: Không tìm thấy người dùng
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
 
 /**
  * 📌 Lấy người dùng theo ID
@@ -59,6 +168,58 @@ router.get("/:id", verifyToken, async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/users/create:
+ *   post:
+ *     summary: Thêm người dùng mới (admin hoặc employee)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - full_name
+ *               - phone_number
+ *               - role
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "newuser@example.com"
+ *               password:
+ *                 type: string
+ *                 example: "123456"
+ *               full_name:
+ *                 type: string
+ *                 example: "Tran Thi B"
+ *               phone_number:
+ *                 type: string
+ *                 example: "0987654321"
+ *               role:
+ *                 type: string
+ *                 example: "customer"
+ *               date_of_birth:
+ *                 type: string
+ *                 format: date
+ *                 example: "2002-08-10"
+ *               picture:
+ *                 type: string
+ *                 example: "https://example.com/avatar.png"
+ *     responses:
+ *       201:
+ *         description: Tạo người dùng thành công
+ *       400:
+ *         description: Thiếu thông tin hoặc trùng email/số điện thoại
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 
 /**
@@ -117,6 +278,50 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   put:
+ *     summary: Cập nhật thông tin người dùng
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               phone_number:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               picture:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       404:
+ *         description: Không tìm thấy người dùng
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
 
 /**
  * 📌 Cập nhật người dùng
@@ -188,6 +393,30 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   delete:
+ *     summary: Xóa người dùng (chỉ admin)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Xóa người dùng thành công
+ *       404:
+ *         description: Không tìm thấy người dùng
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
 
 /**
  * 📌 Xóa người dùng

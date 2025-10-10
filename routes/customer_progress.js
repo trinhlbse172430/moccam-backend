@@ -2,11 +2,105 @@ const express = require("express");
 const router = express.Router();
 const { sql, poolPromise } = require("../db");
 
+/**
+ * @swagger
+ * tags:
+ *   name: CustomerProgress
+ *   description: API quản lý tiến độ học tập của khách hàng
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     CustomerProgress:
+ *       type: object
+ *       properties:
+ *         progress_id:
+ *           type: integer
+ *           example: 1
+ *         customer_id:
+ *           type: integer
+ *           example: 15
+ *         lesson_id:
+ *           type: integer
+ *           example: 5
+ *         status:
+ *           type: string
+ *           example: "completed"
+ *         last_watched:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-10-10T09:30:00Z"
+ *         lesson_name:
+ *           type: string
+ *           example: "Giới thiệu về Đàn Tranh"
+ *
+ *     CreateProgressRequest:
+ *       type: object
+ *       required:
+ *         - customer_id
+ *         - lesson_id
+ *         - status
+ *       properties:
+ *         customer_id:
+ *           type: integer
+ *           example: 15
+ *         lesson_id:
+ *           type: integer
+ *           example: 5
+ *         status:
+ *           type: string
+ *           example: "in_progress"
+ *         last_watched:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-10-10T10:00:00Z"
+ *
+ *     SuccessResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           example: "✅ Customer progress added successfully"
+ */
+
+/**
+ * @swagger
+ * /api/customer-progress/ping:
+ *   get:
+ *     summary: Kiểm tra API hoạt động
+ *     tags: [CustomerProgress]
+ *     responses:
+ *       200:
+ *         description: API hoạt động bình thường
+ *         content:
+ *           text/plain:
+ *             example: "Customer Progress API is working!"
+ */
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Customer Progress API is working!");
 });
 
+/**
+ * @swagger
+ * /api/customer-progress:
+ *   get:
+ *     summary: Lấy danh sách toàn bộ tiến độ học tập
+ *     tags: [CustomerProgress]
+ *     responses:
+ *       200:
+ *         description: Danh sách tiến độ học tập
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/CustomerProgress'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 GET /api/customer-progress
  * Lấy tất cả tiến độ học của khách hàng
@@ -22,6 +116,31 @@ router.get("/", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/customer-progress/{id}:
+ *   get:
+ *     summary: Lấy tiến độ học theo ID
+ *     tags: [CustomerProgress]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của tiến độ học
+ *     responses:
+ *       200:
+ *         description: Thông tin tiến độ học
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CustomerProgress'
+ *       404:
+ *         description: Không tìm thấy tiến độ học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 GET /api/customer-progress/:id
  * Lấy tiến độ học theo ID
@@ -44,6 +163,31 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/customer-progress/{id}:
+ *   get:
+ *     summary: Lấy tiến độ học theo ID
+ *     tags: [CustomerProgress]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của tiến độ học
+ *     responses:
+ *       200:
+ *         description: Thông tin tiến độ học
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CustomerProgress'
+ *       404:
+ *         description: Không tìm thấy tiến độ học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 GET /api/customer-progress/customer/:customer_id
  * Lấy tiến độ học của một khách hàng cụ thể
@@ -70,6 +214,31 @@ router.get("/customer/:customer_id", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/customer-progress:
+ *   post:
+ *     summary: Thêm tiến độ học mới
+ *     tags: [CustomerProgress]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateProgressRequest'
+ *     responses:
+ *       201:
+ *         description: Thêm tiến độ thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc khách hàng/bài học không tồn tại
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 POST /api/customer-progress
@@ -123,6 +292,34 @@ router.post("/", async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /api/customer-progress/{id}:
+ *   put:
+ *     summary: Cập nhật tiến độ học
+ *     tags: [CustomerProgress]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của tiến độ học
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateProgressRequest'
+ *     responses:
+ *       200:
+ *         description: Cập nhật tiến độ thành công
+ *       404:
+ *         description: Không tìm thấy tiến độ học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
+/**
  * 📌 PUT /api/customer-progress/:id
  * Cập nhật tiến độ học
  */
@@ -161,6 +358,28 @@ router.put("/:id", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/customer-progress/{id}:
+ *   delete:
+ *     summary: Xóa tiến độ học
+ *     tags: [CustomerProgress]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID tiến độ học cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa tiến độ học thành công
+ *       404:
+ *         description: Không tìm thấy tiến độ học
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 DELETE /api/customer-progress/:id

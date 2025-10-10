@@ -4,6 +4,74 @@ const { PayOS } = require("@payos/node");
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Payments
+ *   description: API quản lý thanh toán PayOS
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Payment:
+ *       type: object
+ *       properties:
+ *         payment_id:
+ *           type: integer
+ *           example: 101
+ *         subcription_id:
+ *           type: integer
+ *           example: 12
+ *         user_id:
+ *           type: integer
+ *           example: 5
+ *         voucher_id:
+ *           type: integer
+ *           nullable: true
+ *           example: null
+ *         original_amount:
+ *           type: number
+ *           example: 200000
+ *         discount_amount:
+ *           type: number
+ *           example: 50000
+ *         final_amount:
+ *           type: number
+ *           example: 150000
+ *         currency:
+ *           type: string
+ *           example: "VND"
+ *         payment_method:
+ *           type: string
+ *           example: "PayOS"
+ *         description:
+ *           type: string
+ *           example: "Payment for subscription package"
+ *         status:
+ *           type: string
+ *           example: "pending"
+ *         transaction_id:
+ *           type: string
+ *           example: "1717698771234"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-10-07T09:45:00Z"
+ */
+
+/**
+ * @swagger
+ * /api/payments/ping:
+ *   get:
+ *     summary: Kiểm tra API thanh toán hoạt động
+ *     tags: [Payments]
+ *     responses:
+ *       200:
+ *         description: Payments API is working
+ */
+
 // ✅ Kiểm tra hoạt động
 router.get("/ping", (req, res) => res.send("✅ Payments API is working!"));
 
@@ -13,6 +81,68 @@ const payos = new PayOS(
   process.env.PAYOS_API_KEY,
   process.env.PAYOS_CHECKSUM_KEY
 );
+
+/**
+ * @swagger
+ * /api/payments/payos/create:
+ *   post:
+ *     summary: Tạo liên kết thanh toán PayOS
+ *     description: Tạo một liên kết thanh toán cho người dùng dựa trên subscription, voucher và số tiền.
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - subcription_id
+ *               - user_id
+ *               - original_amount
+ *             properties:
+ *               subcription_id:
+ *                 type: integer
+ *                 example: 1
+ *               user_id:
+ *                 type: integer
+ *                 example: 5
+ *               voucher_id:
+ *                 type: integer
+ *                 nullable: true
+ *                 example: 10
+ *               original_amount:
+ *                 type: number
+ *                 example: 200000
+ *               discount_amount:
+ *                 type: number
+ *                 example: 50000
+ *               description:
+ *                 type: string
+ *                 example: "Payment for monthly plan"
+ *     responses:
+ *       200:
+ *         description: Liên kết thanh toán được tạo thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "✅ PayOS payment link created successfully"
+ *                 checkoutUrl:
+ *                   type: string
+ *                   example: "https://pay.payos.vn/checkout/xyz123"
+ *                 orderCode:
+ *                   type: string
+ *                   example: "1717698771234"
+ *       400:
+ *         description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 POST /api/payments/payos/create
@@ -101,6 +231,36 @@ router.post(
     }
   }
 );
+
+/**
+ * @swagger
+ * /api/payments/payos/return:
+ *   get:
+ *     summary: Cập nhật trạng thái thanh toán khi PayOS gọi lại (return URL)
+ *     description: Endpoint này được gọi khi người dùng hoàn tất (hoặc hủy) thanh toán. Hệ thống sẽ cập nhật trạng thái trong cơ sở dữ liệu.
+ *     tags: [Payments]
+ *     parameters:
+ *       - in: query
+ *         name: orderCode
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Mã giao dịch (transaction_id)
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           example: PAID
+ *         description: Trạng thái thanh toán từ PayOS (PAID / CANCELLED / FAILED)
+ *     responses:
+ *       302:
+ *         description: Chuyển hướng về giao diện frontend với kết quả thanh toán
+ *       400:
+ *         description: Thiếu orderCode hoặc dữ liệu không hợp lệ
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/payments/payos/return

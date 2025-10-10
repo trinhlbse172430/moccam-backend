@@ -5,6 +5,79 @@ const jwt = require("jsonwebtoken");
 const { sql, poolPromise } = require("../db");
 require("dotenv").config();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Authentication
+ *   description: API cho việc đăng ký, đăng nhập và xác thực người dùng
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     RegisterRequest:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *         - full_name
+ *         - phone_number
+ *         - role
+ *       properties:
+ *         email:
+ *           type: string
+ *           example: "user@example.com"
+ *         password:
+ *           type: string
+ *           example: "123456"
+ *         full_name:
+ *           type: string
+ *           example: "Nguyen Van A"
+ *         phone_number:
+ *           type: string
+ *           example: "0912345678"
+ *         role:
+ *           type: string
+ *           example: "customer"
+ *     LoginRequest:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           example: "user@example.com"
+ *         password:
+ *           type: string
+ *           example: "123456"
+ *     AuthResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           example: "✅ Login successful"
+ *         token:
+ *           type: string
+ *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *         user:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: integer
+ *               example: 1
+ *             full_name:
+ *               type: string
+ *               example: "Nguyen Van A"
+ *             email:
+ *               type: string
+ *               example: "user@example.com"
+ *             role:
+ *               type: string
+ *               example: "customer"
+ */
+
 // ✅ Hàm tạo token JWT
 const generateToken = (user) => {
   return jwt.sign(
@@ -17,6 +90,33 @@ const generateToken = (user) => {
     { expiresIn: process.env.JWT_EXPIRE || "1d" }
   );
 };
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Đăng ký người dùng mới
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RegisterRequest'
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               example:
+ *                 message: "✅ User registered successfully"
+ *       400:
+ *         description: Thiếu thông tin hoặc email/số điện thoại trùng
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 // ✅ REGISTER USER
 router.post("/register", async (req, res) => {
@@ -73,6 +173,33 @@ router.post("/register", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Đăng nhập bằng email và mật khẩu
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công, trả về token và thông tin user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Email không tồn tại
+ *       401:
+ *         description: Sai mật khẩu
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
 // ✅ LOGIN USER
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -116,6 +243,39 @@ router.post("/login", async (req, res) => {
   }
 });
 
+
+/**
+ * @swagger
+ * /api/auth/google-login:
+ *   post:
+ *     summary: Đăng nhập bằng Google OAuth2
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE..."
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công (có thể tạo tài khoản mới nếu chưa tồn tại)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Thiếu Google token
+ *       401:
+ *         description: Token không hợp lệ
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 // ======================
 // ✅ GOOGLE LOGIN

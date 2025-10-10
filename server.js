@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const PORT = 3000;
+const { swaggerUi, specs } = require("./config/swagger");
 
 app.use(express.json());
 
@@ -69,6 +70,13 @@ app.use(cors());
 const rateLimit = require("express-rate-limit");
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 })); 
 
+// Swagger UI
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+//
+app.listen(3000, () => {
+  console.log("Server running on port 3000");
+  console.log("Swagger Docs available at: http://localhost:3000/api-docs");
+});
 
 // Test API
 app.get("/", (req, res) => {

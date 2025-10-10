@@ -3,10 +3,122 @@ const router = express.Router();
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
+
+/**
+ * @swagger
+ * tags:
+ *   name: Vouchers
+ *   description: API quản lý voucher (mã giảm giá)
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Voucher:
+ *       type: object
+ *       properties:
+ *         voucher_id:
+ *           type: integer
+ *           example: 1
+ *         code:
+ *           type: string
+ *           example: "SUMMER2025"
+ *         description:
+ *           type: string
+ *           example: "Giảm 20% cho mùa hè"
+ *         discount_type:
+ *           type: string
+ *           example: "percent"
+ *         discount_value:
+ *           type: integer
+ *           example: 20
+ *         max_usage:
+ *           type: integer
+ *           example: 100
+ *         used_count:
+ *           type: integer
+ *           example: 10
+ *         start_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-05-01T00:00:00Z"
+ *         end_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-08-01T00:00:00Z"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-04-01T09:00:00Z"
+ *     CreateVoucherRequest:
+ *       type: object
+ *       required:
+ *         - code
+ *         - discount_type
+ *         - discount_value
+ *         - max_usage
+ *         - start_date
+ *         - end_date
+ *       properties:
+ *         code:
+ *           type: string
+ *           example: "WELCOME10"
+ *         description:
+ *           type: string
+ *           example: "Giảm 10% cho khách hàng mới"
+ *         discount_type:
+ *           type: string
+ *           example: "percent"
+ *         discount_value:
+ *           type: integer
+ *           example: 10
+ *         max_usage:
+ *           type: integer
+ *           example: 50
+ *         start_date:
+ *           type: string
+ *           format: date
+ *           example: "2025-01-01"
+ *         end_date:
+ *           type: string
+ *           format: date
+ *           example: "2025-12-31"
+ */
+
+/**
+ * @swagger
+ * /api/vouchers/ping:
+ *   get:
+ *     summary: Kiểm tra API hoạt động
+ *     tags: [Vouchers]
+ *     responses:
+ *       200:
+ *         description: Vouchers API is working
+ */
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Vouchers API is working!");
 });
+
+/**
+ * @swagger
+ * /api/vouchers:
+ *   get:
+ *     summary: Lấy danh sách tất cả voucher
+ *     tags: [Vouchers]
+ *     responses:
+ *       200:
+ *         description: Danh sách voucher trả về thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Voucher'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/vouchers
@@ -24,6 +136,32 @@ router.get("/", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/vouchers/{id}:
+ *   get:
+ *     summary: Lấy thông tin chi tiết voucher theo ID
+ *     tags: [Vouchers]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của voucher
+ *     responses:
+ *       200:
+ *         description: Thông tin voucher
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Voucher'
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 GET /api/vouchers/:id
@@ -46,6 +184,29 @@ router.get("/:id", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+/**
+ * @swagger
+ * /api/vouchers/create:
+ *   post:
+ *     summary: Tạo mới một voucher (chỉ admin)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateVoucherRequest'
+ *     responses:
+ *       201:
+ *         description: Tạo voucher thành công
+ *       400:
+ *         description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 POST /api/vouchers
@@ -109,6 +270,36 @@ router.post("/create", verifyToken, authorizeRoles("admin"), async (req, res) =>
 });
 
 /**
+ * @swagger
+ * /api/vouchers/{id}:
+ *   put:
+ *     summary: Cập nhật thông tin voucher (chỉ admin)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của voucher
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateVoucherRequest'
+ *     responses:
+ *       200:
+ *         description: Cập nhật voucher thành công
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
+/**
  * 📌 PUT /api/vouchers/:id
  * Cập nhật voucher
  */
@@ -169,6 +360,30 @@ router.put("/:id", verifyToken, authorizeRoles("admin"), async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /api/vouchers/use/{code}:
+ *   put:
+ *     summary: Áp dụng voucher bằng mã code (tăng lượt dùng)
+ *     tags: [Vouchers]
+ *     parameters:
+ *       - in: path
+ *         name: code
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Mã voucher cần áp dụng
+ *     responses:
+ *       200:
+ *         description: Áp dụng voucher thành công
+ *       400:
+ *         description: Voucher hết hạn hoặc vượt giới hạn
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
+/**
  * 📌 PUT /api/vouchers/use/:code
  * Áp dụng 1 voucher — tăng used_count nếu hợp lệ
  */
@@ -206,6 +421,30 @@ router.put("/use/:code", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
+/**
+ * @swagger
+ * /api/vouchers/{id}:
+ *   delete:
+ *     summary: Xóa voucher (chỉ admin)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của voucher cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 /**
  * 📌 DELETE /api/vouchers/:id

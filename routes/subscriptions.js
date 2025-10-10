@@ -2,11 +2,118 @@ const express = require("express");
 const router = express.Router();
 const { sql, poolPromise } = require("../db");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Subscriptions
+ *   description: API quản lý gói đăng ký (Subscriptions)
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Subscription:
+ *       type: object
+ *       properties:
+ *         subcription_id:
+ *           type: integer
+ *           example: 1
+ *         customer_id:
+ *           type: integer
+ *           example: 10
+ *         subcription_name:
+ *           type: string
+ *           example: "Gói học 6 tháng"
+ *         start_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-01-01T00:00:00Z"
+ *         end_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-06-30T23:59:59Z"
+ *         is_active:
+ *           type: boolean
+ *           example: true
+ *         customer_name:
+ *           type: string
+ *           example: "Nguyen Van A"
+ *     CreateSubscriptionRequest:
+ *       type: object
+ *       required:
+ *         - customer_id
+ *         - subcription_name
+ *         - start_date
+ *         - end_date
+ *       properties:
+ *         customer_id:
+ *           type: integer
+ *           example: 10
+ *         subcription_name:
+ *           type: string
+ *           example: "Gói học 12 tháng"
+ *         start_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-01-01T00:00:00Z"
+ *         end_date:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-12-31T23:59:59Z"
+ *         is_active:
+ *           type: boolean
+ *           example: true
+ *     SuccessResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           example: "✅ Subscription created successfully"
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           example: "Error message"
+ */
+
+/**
+ * @swagger
+ * /api/subscriptions/ping:
+ *   get:
+ *     summary: Kiểm tra API Subscriptions hoạt động
+ *     tags: [Subscriptions]
+ *     responses:
+ *       200:
+ *         description: API is working
+ *         content:
+ *           text/plain:
+ *             example: "Subscriptions API is working!"
+ */
 // ✅ Test route
 router.get("/ping", (req, res) => {
   res.send("Subscriptions API is working!");
 });
 
+/**
+ * @swagger
+ * /api/subscriptions:
+ *   get:
+ *     summary: Lấy danh sách tất cả gói đăng ký
+ *     tags: [Subscriptions]
+ *     responses:
+ *       200:
+ *         description: Danh sách gói đăng ký trả về thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Subscription'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 GET /api/subscriptions
  * Lấy toàn bộ danh sách gói đăng ký
@@ -27,6 +134,31 @@ router.get("/", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/subscriptions/{id}:
+ *   get:
+ *     summary: Lấy thông tin chi tiết gói đăng ký theo ID
+ *     tags: [Subscriptions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của gói đăng ký
+ *     responses:
+ *       200:
+ *         description: Chi tiết gói đăng ký
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Subscription'
+ *       404:
+ *         description: Không tìm thấy gói đăng ký
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 GET /api/subscriptions/:id
  * Lấy thông tin gói đăng ký theo ID
@@ -55,6 +187,33 @@ router.get("/:id", async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /api/subscriptions/customer/{customer_id}:
+ *   get:
+ *     summary: Lấy danh sách gói đăng ký của một khách hàng
+ *     tags: [Subscriptions]
+ *     parameters:
+ *       - in: path
+ *         name: customer_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của khách hàng
+ *     responses:
+ *       200:
+ *         description: Danh sách gói đăng ký của khách hàng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Subscription'
+ *       404:
+ *         description: Không tìm thấy gói đăng ký cho khách hàng này
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+/**
  * 📌 GET /api/subscriptions/customer/:customer_id
  * Lấy danh sách gói đăng ký của 1 khách hàng
  */
@@ -80,6 +239,30 @@ router.get("/customer/:customer_id", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/subscriptions:
+ *   post:
+ *     summary: Tạo gói đăng ký mới
+ *     tags: [Subscriptions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateSubscriptionRequest'
+ *     responses:
+ *       201:
+ *         description: Tạo gói đăng ký thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc thiếu trường bắt buộc
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 POST /api/subscriptions
  * Thêm gói đăng ký mới
@@ -128,6 +311,52 @@ router.post("/", async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /api/subscriptions/{id}:
+ *   put:
+ *     summary: Cập nhật thông tin gói đăng ký
+ *     tags: [Subscriptions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của gói đăng ký
+ *     requestBody:
+ *       description: Dữ liệu cập nhật (subcription_name, start_date, end_date, is_active)
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               subcription_name:
+ *                 type: string
+ *                 example: "Gói học nâng cao 3 tháng"
+ *               start_date:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-03-01T00:00:00Z"
+ *               end_date:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-06-01T00:00:00Z"
+ *               is_active:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Thiếu hoặc sai dữ liệu
+ *       404:
+ *         description: Không tìm thấy gói đăng ký
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+
+/**
  * 📌 PUT /api/subscriptions/:id
  * Cập nhật thông tin gói đăng ký
  */
@@ -171,6 +400,22 @@ router.put("/:id", async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /api/subscriptions/check-status/all:
+ *   put:
+ *     summary: Tự động kiểm tra và cập nhật trạng thái hoạt động (is_active) của tất cả gói đăng ký
+ *     tags: [Subscriptions]
+ *     responses:
+ *       200:
+ *         description: Cập nhật trạng thái thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+/**
  * 📌 PUT /api/subscriptions/check-status
  * Tự động cập nhật trạng thái hoạt động (is_active)
  */
@@ -192,6 +437,27 @@ router.put("/check-status/all", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/subscriptions/{id}:
+ *   delete:
+ *     summary: Xóa gói đăng ký
+ *     tags: [Subscriptions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của gói đăng ký cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
+ *       404:
+ *         description: Không tìm thấy gói đăng ký
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 /**
  * 📌 DELETE /api/subscriptions/:id
  * Xóa gói đăng ký
