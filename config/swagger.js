@@ -1,4 +1,4 @@
-// 📘 swagger.js – Cấu hình Swagger hoàn chỉnh cho hệ thống PayOS + Learning Platform
+// 📘 swagger.js – Cấu hình Swagger hoàn chỉnh cho hệ thống Mộc Cầm (PayOS + Learning Platform)
 
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
@@ -8,27 +8,32 @@ const options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "🎓 Learning Management API Documentation",
+      title: "🎓 Mộc Cầm Learning Platform API Documentation",
       version: "1.0.0",
       description: `
 ## 📘 Giới thiệu
 
-Đây là **tài liệu API** cho hệ thống **Nền tảng học trực tuyến** bao gồm quản lý người dùng, thanh toán, bài học, và các mô-đun AI.
+Đây là **tài liệu API chính thức** của **Mộc Cầm – Nền tảng học nhạc truyền thống Việt Nam**.  
+Hệ thống bao gồm các mô-đun **quản lý người dùng**, **thanh toán PayOS**, **bài học**, **AI nhận diện**, và **theo dõi tiến độ học**.
 
 ---
 
-### 💡 Nhóm API chính:
-- 👤 **Users** – Quản lý người dùng & vai trò
-- 🔐 **Authentication** – Đăng nhập, đăng ký, xác thực Google
-- 💳 **Payments (PayOS)** – Xử lý thanh toán
-- 🎓 **Courses & Lessons** – Quản lý khóa học, bài học
-- 🏷️ **Vouchers** – Quản lý mã giảm giá
-- 🧩 **Resources** – Tài nguyên học tập
-- 🧠 **AI Models** – Mô hình AI học nhạc
-- ✋ **Hand Motions** – Theo dõi chuyển động tay
-- 💬 **Comments** – Bình luận & đánh giá bài học
-- 🔔 **Notifications** – Thông báo người dùng
-- 📈 **Customer Progress** – Theo dõi tiến độ học
+### 💡 Các nhóm API chính:
+
+| Nhóm | Chức năng |
+|------|------------|
+| 👤 **Users** | Quản lý người dùng, vai trò và thông tin hồ sơ |
+| 🔐 **Authentication** | Đăng nhập, đăng ký, xác thực Google |
+| 💳 **Payments (PayOS)** | Tạo liên kết thanh toán và xử lý giao dịch |
+| 🎓 **Courses & Lessons** | Quản lý khóa học và bài học |
+| 📚 **LessonProgress** | Theo dõi tiến độ học của học viên |
+| 🏷️ **Vouchers** | Quản lý và áp dụng mã giảm giá |
+| 🧩 **Resources** | Quản lý tài nguyên học tập (PDF, video, audio) |
+| 🧠 **AI Models** | Mô hình AI phân tích âm thanh hoặc chuyển động |
+| ✋ **Hand Motions** | Theo dõi chuyển động tay của học viên |
+| 💬 **Comments** | Quản lý bình luận và đánh giá bài học |
+| 🔔 **Notifications** | Gửi và nhận thông báo hệ thống |
+| 📈 **Activity & Leaderboard** | Ghi nhận hoạt động và xếp hạng người học |
 
 ---
 
@@ -40,20 +45,16 @@ const options = {
         name: "Mộc Cầm API Team",
         email: "moccam.business@gmail.com",
       },
-      license: {
-        name: "MIT License",
-        url: "https://opensource.org/licenses/MIT",
-      },
     },
 
     servers: [
       {
         url: "http://localhost:3000",
-        description: "Local Development Server",
+        description: "🌐 Local Development Server",
       },
       {
-        url: "https://your-production-domain.com",
-        description: "Production Server",
+        url: "https://moccam-api.vercel.app",
+        description: "☁️ Production Server",
       },
     ],
 
@@ -64,11 +65,11 @@ const options = {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "🔑 Nhập token JWT vào đây (ví dụ: Bearer eyJhbGciOiJIUzI1NiIs...)",
+          description: "🔑 Nhập token JWT vào đây (ví dụ: **Bearer eyJhbGciOiJIUzI1NiIs...**)",
         },
       },
 
-      // 📦 Các schema mẫu (tái sử dụng trong routes)
+      // 📦 Các schema mẫu (tái sử dụng trong toàn hệ thống)
       schemas: {
         SuccessResponse: {
           type: "object",
@@ -104,7 +105,7 @@ const options = {
       },
     },
 
-    // 🚪 Mặc định bật Bearer Token cho các route cần xác thực
+    // 🚪 Mặc định bật Bearer Token cho các route có xác thực
     security: [
       {
         bearerAuth: [],
@@ -112,49 +113,66 @@ const options = {
     ],
   },
 
-  // 🧩 Vị trí các file route chứa swagger comment
+  // 🧩 Đường dẫn tới các route chứa Swagger comment
   apis: ["./routes/*.js"],
 };
 
-// ✅ Sinh tài liệu Swagger (JSON spec)
+// ✅ Sinh JSON spec cho Swagger
 const specs = swaggerJsDoc(options);
 
-// 🎨 Tuỳ chỉnh giao diện Swagger UI
+// 🎨 Tùy chỉnh giao diện Swagger UI
 const swaggerUiOptions = {
   explorer: true,
   customCss: `
     .swagger-ui .topbar {
-      background-color: #004aad !important;
+      background-color: #1a1f71 !important;
+      padding: 10px;
     }
     .topbar-wrapper .link span {
       color: #ffffff !important;
       font-weight: bold;
+      letter-spacing: 0.5px;
     }
     .swagger-ui .scheme-container {
       background: #f5f7fa;
-      border-radius: 8px;
-      padding: 8px;
+      border-radius: 10px;
+      padding: 10px;
     }
     .swagger-ui .info hgroup.main a {
-      color: #004aad !important;
+      color: #1a1f71 !important;
+    }
+    .swagger-ui .opblock {
+      border-radius: 10px;
     }
     .swagger-ui .opblock.opblock-post {
       border-color: #00a86b;
+      box-shadow: 0 0 5px rgba(0,168,107,0.3);
     }
     .swagger-ui .opblock.opblock-get {
       border-color: #007bff;
+      box-shadow: 0 0 5px rgba(0,123,255,0.3);
     }
     .swagger-ui .opblock.opblock-put {
       border-color: #f39c12;
+      box-shadow: 0 0 5px rgba(243,156,18,0.3);
     }
     .swagger-ui .opblock.opblock-delete {
       border-color: #e74c3c;
+      box-shadow: 0 0 5px rgba(231,76,60,0.3);
+    }
+    .swagger-ui .model-title {
+      font-weight: bold;
+      color: #1a1f71;
+    }
+    .swagger-ui .markdown p {
+      font-size: 15px;
+      line-height: 1.6;
     }
   `,
-  customSiteTitle: "PayOS & Learning Management API Docs",
+  customSiteTitle: "🎓 Mộc Cầm API Docs",
 };
 
-// 🚀 Xuất module để sử dụng trong server.js hoặc app.js
+// 🚀 Export để dùng trong app.js hoặc server.js
 module.exports = {
   swaggerUi,
   specs,

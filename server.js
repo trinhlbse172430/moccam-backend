@@ -58,6 +58,18 @@ app.use("/api/payments", paymentRoutes);
 const authRoutes = require("./routes/auth");
 app.use("/api/auth", authRoutes);
 
+// Import route Leaderboard
+const leaderboardRoutes = require("./routes/leaderboard");
+app.use("/api", leaderboardRoutes);
+
+// Import route Lesson Progress
+const lessonProgressRoutes = require("./routes/lessonProgress");
+app.use("/api/lesson-progress", lessonProgressRoutes);
+
+// Import route User Activity Log
+const userActivityLogRoutes = require("./routes/userActivityLog");
+app.use("/api/activity", userActivityLogRoutes);
+
 // chặn XSS, clickjacking, sniffing
 const helmet = require("helmet");
 app.use(helmet()); 
