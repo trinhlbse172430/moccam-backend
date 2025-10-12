@@ -439,69 +439,72 @@ router.post("/google-login", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Xác thực token Google
     const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+       idToken: token,
+       audience: process.env.GOOGLE_CLIENT_ID,
+  });
 
-    const payload = ticket.getPayload();
-    const { email, name } = payload;
+  const payload = ticket.getPayload();
+  const { email, name } = payload;
 
-    const pool = await poolPromise;
+  const pool = await poolPromise;
 
-    // 2️⃣ Kiểm tra user đã tồn tại chưa
-    const result = await pool
-      .request()
-      .input("email", sql.VarChar(50), email)
-      .query("SELECT * FROM Users WHERE email = @email");
+  const result = await pool
+  .request()
+  .input("email", sql.VarChar(50), email)
+  .query("SELECT * FROM Users WHERE email = @email");
 
-    let user;
+  let user;
+   let loginMessage;
+    let isNewUser;
 
-    if (result.recordset.length > 0) {
-      user = result.recordset[0];
-    } else {
-      // 3️⃣ Nếu chưa có, tạo mới user với role mặc định là "customer"
-      const insert = await pool
-        .request()
-        .input("email", sql.VarChar(50), email)
-        .input("full_name", sql.NVarChar(50), name)
-        .input("phone_number", sql.VarChar(10), "") // chưa có số điện thoại
-        .input("password", sql.VarChar(200), "") // chưa có mật khẩu
-        .input("role", sql.VarChar(10), "customer")
-        .query(`
-          INSERT INTO Users (password, email, full_name, phone_number, role, created_at)
-          OUTPUT INSERTED.*
-          VALUES (@password, @email, @full_name, @phone_number, @role, GETDATE())
-        `);
-      user = insert.recordset[0];
-    }
+  if (result.recordset.length > 0) {
+    user = result.recordset[0];
+    loginMessage = "✅ Chào mừng bạn quay trở lại!";
+    isNewUser = false;
+  } else {
+    const insert = await pool
+    .request()
+    .input("email", sql.VarChar(50), email)
+    .input("full_name", sql.NVarChar(50), name)
+    .input("phone_number", sql.VarChar(10), "")
+    .input("password", sql.VarChar(200), "")
+    .input("role", sql.VarChar(10), "customer")
+    .query(`
+      INSERT INTO Users (password, email, full_name, phone_number, role, created_at)
+      OUTPUT INSERTED.*
+      VALUES (@password, @email, @full_name, @phone_number, @role, GETDATE())
+      `);
+    user = insert.recordset[0];
+    loginMessage = "✅ Tạo tài khoản mới qua Google thành công!";
+    isNewUser = true;
+}
 
-    // 4️⃣ Tạo token app (JWT nội bộ)
-    const appToken = jwt.sign(
-      {
-        id: user.user_id,
-        name: user.full_name,
-        email: user.email,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE || "1d" }
-    );
+  const appToken = jwt.sign(
+  {
+    id: user.user_id,
+    name: user.full_name,
+    email: user.email,
+    role: user.role,
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRE || "1d" }
+  );
 
-    res.json({
-      message: "✅ Google login successful",
-      token: appToken,
-      user: {
-        id: user.user_id,
-        full_name: user.full_name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("❌ Google login error:", err.message);
-    res.status(401).json({ message: "Invalid Google token" });
+  res.json({
+    message: loginMessage,
+    token: appToken,
+    isNewUser: isNewUser,
+    user: {
+      id: user.user_id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+    },
+  });
+} catch (err) {
+  console.error("❌ Google login error:", err.message);
+  res.status(401).json({ message: "Invalid Google token" });
   }
 });
 
