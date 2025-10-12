@@ -141,14 +141,14 @@ router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
  * 📌 Lấy người dùng theo ID
  * GET /api/users/:id
  */
-router.get("/:id", verifyToken, async (req, res) => {
+router.get("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"), async (req, res) => {
   try {
     const pool = await poolPromise;
 
     // ❗ Nếu không phải admin, chỉ được xem chính mình
-    if (req.user.role !== "admin" && req.user.user_id != req.params.id) {
-      return res.status(403).json({ message: "You are not allowed to view other people's information" });
-    }
+    if (req.user.role !== "admin" && req.user.id !== parseInt(req.params.id, 10)) {
+      return res.status(403).json({ message: "You are not allowed to view other people's information" });
+    }
 
     const result = await pool.request()
       .input("user_id", sql.Int, req.params.id)
@@ -329,63 +329,79 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
  */
 router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"), async (req, res) => {
   const { full_name, email, phone_number, role, password, date_of_birth, picture } = req.body;
-
-  // 💡 Cải tiến: Không bắt buộc phải gửi tất cả các trường
   if (Object.keys(req.body).length === 0) {
     return res.status(400).json({ message: "No fields to update provided" });
+  }
+  // Kiểm tra quyền: user chỉ được sửa thông tin của chính mình, trừ admin
+  if (req.user.role !== "admin" && req.user.id !== parseInt(req.params.id, 10)) {
+    return res.status(403).json({ message: "You are not allowed to modify other people's information" });
   }
 
   try {
     const pool = await poolPromise;
 
-    // 🔹 Kiểm tra email trùng (nếu có gửi email)
-    if (email) {
-      const checkEmail = await pool.request()
-        .input("email", sql.VarChar(50), email)
-        .input("user_id", sql.Int, req.params.id)
-        .query("SELECT COUNT(*) AS count FROM Users WHERE email = @email AND user_id != @user_id");
-      if (checkEmail.recordset[0].count > 0) {
-        return res.status(400).json({ message: "Email already exists" });
-      }
+    // Lấy thông tin user hiện có để so sánh
+    const existingUserResult = await pool.request()
+      .input("user_id", sql.Int, req.params.id)
+      .query("SELECT * FROM Users WHERE user_id = @user_id");
+      
+    if (existingUserResult.recordset.length === 0) {
+      return res.status(404).json({ message: "User not found" });
     }
+    const user = existingUserResult.recordset[0];
 
-    // 🔹 Kiểm tra số điện thoại trùng (nếu có gửi sđt)
-    if (phone_number) {
-        const checkPhone = await pool.request()
-          .input("phone_number", sql.VarChar(10), phone_number)
-          .input("user_id", sql.Int, req.params.id)
-          .query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number AND user_id != @user_id");
-        if (checkPhone.recordset[0].count > 0) {
-          return res.status(400).json({ message: "Phone number already exists" });
-        }
-    }
-    
-    // 💡 Cải tiến: Xây dựng câu lệnh UPDATE động
+    // --- PHẦN LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ---
+
     const setClauses = [];
     const request = pool.request().input("user_id", sql.Int, req.params.id);
 
-    if (full_name) { setClauses.push("full_name = @full_name"); request.input("full_name", sql.NVarChar(50), full_name); }
-    if (email) { setClauses.push("email = @email"); request.input("email", sql.VarChar(50), email); }
-    if (phone_number) { setClauses.push("phone_number = @phone_number"); request.input("phone_number", sql.VarChar(10), phone_number); }
-    if (role) { setClauses.push("role = @role"); request.input("role", sql.VarChar(10), role); }
-    if (date_of_birth) { setClauses.push("date_of_birth = @date_of_birth"); request.input("date_of_birth", sql.Date, date_of_birth); }
-    if (picture) { setClauses.push("picture = @picture"); request.input("picture", sql.NVarChar(sql.MAX), picture); }
+    // FIX: Chỉ thêm vào `setClauses` nếu giá trị mới khác giá trị cũ
+    if (full_name !== undefined && full_name !== user.full_name) {
+      setClauses.push("full_name = @full_name");
+      request.input("full_name", sql.NVarChar(50), full_name);
+    }
+    if (email !== undefined && email !== user.email) {
+      // Kiểm tra email trùng trước khi thêm
+      const checkEmail = await pool.request().input("email", sql.VarChar(50), email).input("user_id", sql.Int, req.params.id).query("SELECT COUNT(*) AS count FROM Users WHERE email = @email AND user_id != @user_id");
+      if (checkEmail.recordset[0].count > 0) return res.status(400).json({ message: "Email already exists" });
+      
+      setClauses.push("email = @email");
+      request.input("email", sql.VarChar(50), email);
+    }
+    if (phone_number !== undefined && phone_number !== user.phone_number) {
+       // Kiểm tra phone trùng trước khi thêm
+      const checkPhone = await pool.request().input("phone_number", sql.VarChar(10), phone_number).input("user_id", sql.Int, req.params.id).query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number AND user_id != @user_id");
+      if (checkPhone.recordset[0].count > 0) return res.status(400).json({ message: "Phone number already exists" });
+
+      setClauses.push("phone_number = @phone_number");
+      request.input("phone_number", sql.VarChar(10), phone_number);
+    }
+    if (role !== undefined && role !== user.role) {
+      setClauses.push("role = @role");
+      request.input("role", sql.VarChar(10), role);
+    }
+    if (date_of_birth !== undefined && date_of_birth !== user.date_of_birth) {
+      setClauses.push("date_of_birth = @date_of_birth");
+      request.input("date_of_birth", sql.Date, date_of_birth);
+    }
+    if (picture !== undefined && picture !== user.picture) {
+      setClauses.push("picture = @picture");
+      request.input("picture", sql.NVarChar(sql.MAX), picture);
+    }
+    
+    // Mật khẩu được xử lý riêng, không cần so sánh
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       setClauses.push("password = @password");
       request.input("password", sql.VarChar(200), hashedPassword);
     }
-    
+    // Nếu không có trường nào thay đổi, trả về lỗi
     if (setClauses.length === 0) {
-        return res.status(400).json({ message: "No valid fields to update" });
+      return res.status(400).json({ message: "No new information to update" });
     }
 
     const query = `UPDATE Users SET ${setClauses.join(", ")} WHERE user_id = @user_id`;
-    const result = await request.query(query);
-
-    if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    await request.query(query);
 
     res.json({ message: "✅ User updated successfully" });
   } catch (err) {

@@ -23,7 +23,6 @@ require("dotenv").config();
  *         - password
  *         - full_name
  *         - phone_number
- *         - role
  *       properties:
  *         email:
  *           type: string
@@ -37,9 +36,6 @@ require("dotenv").config();
  *         phone_number:
  *           type: string
  *           example: "0912345678"
- *         role:
- *           type: string
- *           example: "customer"
  *     LoginRequest:
  *       type: object
  *       required:
@@ -73,9 +69,72 @@ require("dotenv").config();
  *             email:
  *               type: string
  *               example: "user@example.com"
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     RegisterRequest1:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *         - full_name
+ *         - phone_number
+ *         - role
+ *       properties:
+ *         email:
+ *           type: string
+ *           example: "employee@example.com"
+ *         password:
+ *           type: string
+ *           example: "123456"
+ *         full_name:
+ *           type: string
+ *           example: "Nguyen Van A"
+ *         phone_number:
+ *           type: string
+ *           example: "0912345679"
+ *         role:
+ *           type: string
+ *           example: "employee"
+ *     LoginRequest:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           example: "employee@example.com"
+ *         password:
+ *           type: string
+ *           example: "123456"
+ *     AuthResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           example: "✅ Login successful"
+ *         token:
+ *           type: string
+ *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *         user:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: integer
+ *               example: 2
+ *             full_name:
+ *               type: string
+ *               example: "Nguyen Van A"
+ *             email:
+ *               type: string
+ *               example: "employee@example.com"
  *             role:
  *               type: string
- *               example: "customer"
+ *               example: "employee"
  */
 
 // ✅ Hàm tạo token JWT
@@ -93,16 +152,101 @@ const generateToken = (user) => {
 
 /**
  * @swagger
- * /api/auth/register:
+ * /api/auth/register/customer:
  *   post:
  *     summary: Đăng ký người dùng mới
  *     tags: [Authentication]
  *     requestBody:
+ *       description: Thông tin người dùng cần thiết để đăng ký
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/RegisterRequest'
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               example:
+ *                 message: "✅ Customer registered successfully"
+ *       400:
+ *         description: Thiếu thông tin hoặc email/số điện thoại đã tồn tại
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+// ✅ REGISTER Customer
+router.post("/register/customer", async (req, res) => {
+  const { password, email, full_name, phone_number, picture, date_of_birth } = req.body;
+
+  if (!password || !email || !full_name || !phone_number) {
+    return res.status(400).json({
+      message:
+        "Missing required fields: password, email, full_name, phone_number",
+    });
+  }
+
+  try {
+    const pool = await poolPromise;
+
+    // Kiểm tra email trùng
+    const checkEmail = await pool
+      .request()
+      .input("email", sql.VarChar(50), email)
+      .query("SELECT COUNT(*) AS count FROM Users WHERE email = @email");
+    if (checkEmail.recordset[0].count > 0) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
+    // Kiểm tra phone trùng
+    const checkPhone = await pool
+      .request()
+      .input("phone_number", sql.VarChar(10), phone_number)
+      .query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number");
+    if (checkPhone.recordset[0].count > 0) {
+      return res.status(400).json({ message: "Phone number already exists" });
+    }
+
+    // Mã hóa mật khẩu
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Thêm user
+    await pool
+      .request()
+      .input("email", sql.VarChar(50), email)
+      .input("password", sql.VarChar(200), hashedPassword)
+      .input("full_name", sql.NVarChar(50), full_name)
+      .input("phone_number", sql.VarChar(10), phone_number)
+      .input("role", sql.VarChar(10), "customer")
+      .input("picture", sql.VarChar(MAX), picture || null)
+      .input("date_of_birth", sql.Date, date_of_birth || null)
+      .query(`
+        INSERT INTO Users (email, password, full_name, phone_number, role, picture, date_of_birth, created_at)
+        VALUES (@email, @password, @full_name, @phone_number, @role, @picture, @date_of_birth, GETDATE())
+      `);
+
+    res.status(201).json({ message: "✅ Customer registered successfully" });
+  } catch (err) {
+    console.error("❌ Error in REGISTER:", err.message);
+    res.status(500).send("Server error");
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/register/user:
+ *   post:
+ *     summary: Đăng ký nhân viên hoặc quản trị viên mới
+ *     tags: [Authentication]
+ *     requestBody:
+ *       description: Thông tin cần thiết để đăng ký
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RegisterRequest1'
  *     responses:
  *       201:
  *         description: Đăng ký thành công
@@ -117,10 +261,11 @@ const generateToken = (user) => {
  *       500:
  *         description: Lỗi máy chủ
  */
-
-// ✅ REGISTER USER
-router.post("/register", async (req, res) => {
-  const { password, email, full_name, phone_number, role } = req.body;
+// ======================
+// ✅ REGISTER USER (DÙNG CHO EMPLOYEE VÀ ADMIN)
+// ======================
+router.post("/register/user", async (req, res) => {
+  const { password, email, full_name, phone_number, role, picture, date_of_birth } = req.body;
 
   if (!password || !email || !full_name || !phone_number || !role) {
     return res.status(400).json({
@@ -161,9 +306,11 @@ router.post("/register", async (req, res) => {
       .input("full_name", sql.NVarChar(50), full_name)
       .input("phone_number", sql.VarChar(10), phone_number)
       .input("role", sql.VarChar(10), role)
+      .input("picture", sql.VarChar(MAX), picture || null)
+      .input("date_of_birth", sql.Date, date_of_birth || null)
       .query(`
-        INSERT INTO Users (email, password, full_name, phone_number, role, created_at)
-        VALUES (@email, @password, @full_name, @phone_number, @role, GETDATE())
+        INSERT INTO Users (email, password, full_name, phone_number, role, picture, date_of_birth, created_at)
+        VALUES (@email, @password, @full_name, @phone_number, @role, @picture, @date_of_birth, GETDATE())
       `);
 
     res.status(201).json({ message: "✅ User registered successfully" });
@@ -281,6 +428,7 @@ router.post("/login", async (req, res) => {
 // ✅ GOOGLE LOGIN
 // ======================
 const { OAuth2Client } = require("google-auth-library");
+const { MAX } = require("mssql");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 router.post("/google-login", async (req, res) => {
