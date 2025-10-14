@@ -12,11 +12,12 @@ require("dotenv").config();
  *   description: API cho việc đăng ký, đăng nhập và xác thực người dùng
  */
 
+
 /**
  * @swagger
  * components:
  *   schemas:
- *     RegisterRequest:
+ *     RegisterCustomerRequest:
  *       type: object
  *       required:
  *         - email
@@ -36,6 +37,43 @@ require("dotenv").config();
  *         phone_number:
  *           type: string
  *           example: "0912345678"
+ *         picture:
+ *           type: string
+ *           example: "https://example.com/avatar.png"
+ *         date_of_birth:
+ *           type: string
+ *           format: date
+ *           example: "2000-05-20"
+ *
+ *     RegisterUserRequest:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *         - full_name
+ *         - phone_number
+ *         - role
+ *       properties:
+ *         email:
+ *           type: string
+ *           example: "employee@example.com"
+ *         password:
+ *           type: string
+ *           example: "123456"
+ *         full_name:
+ *           type: string
+ *           example: "Tran Thi B"
+ *         phone_number:
+ *           type: string
+ *           example: "0987654321"
+ *         role:
+ *           type: string
+ *           enum: [admin, employee]
+ *           example: "employee"
+ *         picture:
+ *           type: string
+ *           example: "https://example.com/staff.png"
+ *
  *     LoginRequest:
  *       type: object
  *       required:
@@ -48,6 +86,16 @@ require("dotenv").config();
  *         password:
  *           type: string
  *           example: "123456"
+ *
+ *     GoogleLoginRequest:
+ *       type: object
+ *       required:
+ *         - token
+ *       properties:
+ *         token:
+ *           type: string
+ *           example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE..."
+ *
  *     AuthResponse:
  *       type: object
  *       properties:
@@ -69,72 +117,9 @@ require("dotenv").config();
  *             email:
  *               type: string
  *               example: "user@example.com"
- */
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     RegisterRequest1:
- *       type: object
- *       required:
- *         - email
- *         - password
- *         - full_name
- *         - phone_number
- *         - role
- *       properties:
- *         email:
- *           type: string
- *           example: "employee@example.com"
- *         password:
- *           type: string
- *           example: "123456"
- *         full_name:
- *           type: string
- *           example: "Nguyen Van A"
- *         phone_number:
- *           type: string
- *           example: "0912345679"
- *         role:
- *           type: string
- *           example: "employee"
- *     LoginRequest:
- *       type: object
- *       required:
- *         - email
- *         - password
- *       properties:
- *         email:
- *           type: string
- *           example: "employee@example.com"
- *         password:
- *           type: string
- *           example: "123456"
- *     AuthResponse:
- *       type: object
- *       properties:
- *         message:
- *           type: string
- *           example: "✅ Login successful"
- *         token:
- *           type: string
- *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
- *         user:
- *           type: object
- *           properties:
- *             id:
- *               type: integer
- *               example: 2
- *             full_name:
- *               type: string
- *               example: "Nguyen Van A"
- *             email:
- *               type: string
- *               example: "employee@example.com"
  *             role:
  *               type: string
- *               example: "employee"
+ *               example: "customer"
  */
 
 // ✅ Hàm tạo token JWT
@@ -154,26 +139,24 @@ const generateToken = (user) => {
  * @swagger
  * /api/auth/register/customer:
  *   post:
- *     summary: Đăng ký người dùng mới
+ *     summary: 👤 Đăng ký tài khoản khách hàng (Customer)
  *     tags: [Authentication]
  *     requestBody:
- *       description: Thông tin người dùng cần thiết để đăng ký
  *       required: true
+ *       description: Thông tin người dùng để đăng ký tài khoản khách hàng
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RegisterRequest'
+ *             $ref: '#/components/schemas/RegisterCustomerRequest'
  *     responses:
  *       201:
  *         description: Đăng ký thành công
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               example:
- *                 message: "✅ Customer registered successfully"
+ *             example:
+ *               message: "✅ Customer registered successfully"
  *       400:
- *         description: Thiếu thông tin hoặc email/số điện thoại đã tồn tại
+ *         description: Email hoặc số điện thoại đã tồn tại
  *       500:
  *         description: Lỗi máy chủ
  */
@@ -234,30 +217,29 @@ router.post("/register/customer", async (req, res) => {
   }
 });
 
+
 /**
  * @swagger
  * /api/auth/register/user:
  *   post:
- *     summary: Đăng ký nhân viên hoặc quản trị viên mới
+ *     summary: 🧑‍💼 Đăng ký tài khoản nhân viên hoặc quản trị viên
  *     tags: [Authentication]
  *     requestBody:
- *       description: Thông tin cần thiết để đăng ký
  *       required: true
+ *       description: Thông tin người dùng và vai trò
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RegisterRequest1'
+ *             $ref: '#/components/schemas/RegisterUserRequest'
  *     responses:
  *       201:
  *         description: Đăng ký thành công
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               example:
- *                 message: "✅ User registered successfully"
+ *             example:
+ *               message: "✅ User registered successfully"
  *       400:
- *         description: Thiếu thông tin hoặc email/số điện thoại trùng
+ *         description: Email hoặc số điện thoại trùng lặp
  *       500:
  *         description: Lỗi máy chủ
  */
@@ -320,14 +302,19 @@ router.post("/register/user", async (req, res) => {
   }
 });
 
+/* =======================================================
+   🟢 POST /api/auth/login
+   → Đăng nhập người dùng (Customer / Employee / Admin)
+=========================================================*/
 /**
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Đăng nhập bằng email và mật khẩu
+ *     summary: 🔑 Đăng nhập hệ thống
  *     tags: [Authentication]
  *     requestBody:
  *       required: true
+ *       description: Email và mật khẩu người dùng
  *       content:
  *         application/json:
  *           schema:
@@ -342,7 +329,7 @@ router.post("/register/user", async (req, res) => {
  *       400:
  *         description: Email không tồn tại
  *       401:
- *         description: Sai mật khẩu
+ *         description: Mật khẩu sai
  *       500:
  *         description: Lỗi máy chủ
  */
@@ -391,35 +378,31 @@ router.post("/login", async (req, res) => {
 });
 
 
+
 /**
  * @swagger
  * /api/auth/google-login:
  *   post:
- *     summary: Đăng nhập bằng Google OAuth2
+ *     summary: 🔐 Đăng nhập bằng Google OAuth2
  *     tags: [Authentication]
  *     requestBody:
  *       required: true
+ *       description: Google token sau khi xác thực
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - token
- *             properties:
- *               token:
- *                 type: string
- *                 example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE..."
+ *             $ref: '#/components/schemas/GoogleLoginRequest'
  *     responses:
  *       200:
- *         description: Đăng nhập thành công (có thể tạo tài khoản mới nếu chưa tồn tại)
+ *         description: Đăng nhập thành công (tự động tạo tài khoản mới nếu chưa tồn tại)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AuthResponse'
  *       400:
- *         description: Thiếu Google token
+ *         description: Thiếu hoặc token không hợp lệ
  *       401:
- *         description: Token không hợp lệ
+ *         description: Token Google không hợp lệ
  *       500:
  *         description: Lỗi máy chủ
  */
@@ -507,6 +490,7 @@ router.post("/google-login", async (req, res) => {
   res.status(401).json({ message: "Invalid Google token" });
   }
 });
+
 
 
 module.exports = router;

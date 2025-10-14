@@ -8,7 +8,7 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
  * @swagger
  * tags:
  *   name: Users
- *   description: API quản lý người dùng trong hệ thống
+ *   description: 👤 API quản lý người dùng trong hệ thống
  */
 
 /**
@@ -46,29 +46,31 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
  *           example: "2025-10-05T08:00:00Z"
  */
 
-
+/* ===========================================================
+   🔹 GET /api/users/ping
+   → Kiểm tra API hoạt động
+=========================================================== */
 /**
  * @swagger
  * /api/users/ping:
  *   get:
- *     summary: Kiểm tra API hoạt động
+ *     summary: 🔄 Kiểm tra API hoạt động
  *     tags: [Users]
  *     responses:
  *       200:
  *         description: Users API is working
  */
+router.get("/ping", (req, res) => res.send("Users API is working!"));
 
-// ✅ Test route
-router.get("/ping", (req, res) => {
-  res.send("Users API is working!");
-});
-
-
+/* ===========================================================
+   👥 GET /api/users
+   → Lấy toàn bộ người dùng (Admin)
+=========================================================== */
 /**
  * @swagger
  * /api/users:
  *   get:
- *     summary: Lấy danh sách tất cả người dùng (chỉ admin)
+ *     summary: 👥 Lấy danh sách tất cả người dùng (chỉ Admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -86,15 +88,9 @@ router.get("/ping", (req, res) => {
  *       500:
  *         description: Lỗi máy chủ
  */
-
-/**
- * 📌 Lấy tất cả người dùng
- * GET /api/users
- */
 router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
   try {
     const pool = await poolPromise;
-    // 💡 Tối ưu: Chỉ chọn các trường cần thiết, loại bỏ password để tăng bảo mật
     const result = await pool.request().query(`
       SELECT user_id, email, full_name, date_of_birth, picture, phone_number, role, created_at 
       FROM Users
@@ -106,18 +102,21 @@ router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
   }
 });
 
+/* ===========================================================
+   🔍 GET /api/users/{id}
+   → Lấy thông tin người dùng cụ thể
+=========================================================== */
 /**
  * @swagger
  * /api/users/{id}:
  *   get:
- *     summary: Lấy thông tin người dùng theo ID
+ *     summary: 🔍 Lấy thông tin người dùng theo ID
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - name: id
  *         in: path
- *         description: ID người dùng
  *         required: true
  *         schema:
  *           type: integer
@@ -135,20 +134,14 @@ router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
  *       500:
  *         description: Lỗi máy chủ
  */
-
-
-/**
- * 📌 Lấy người dùng theo ID
- * GET /api/users/:id
- */
 router.get("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"), async (req, res) => {
   try {
     const pool = await poolPromise;
 
     // ❗ Nếu không phải admin, chỉ được xem chính mình
     if (req.user.role !== "admin" && req.user.id !== parseInt(req.params.id, 10)) {
-      return res.status(403).json({ message: "You are not allowed to view other people's information" });
-    }
+      return res.status(403).json({ message: "You are not allowed to view other people's information" });
+    }
 
     const result = await pool.request()
       .input("user_id", sql.Int, req.params.id)
@@ -159,7 +152,7 @@ router.get("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
       `);
 
     if (result.recordset.length === 0) {
-      return res.status(404).json({ message: "User does not exist" });
+      return res.status(404).json({ message: "User not found" });
     }
 
     res.json(result.recordset[0]);
@@ -169,11 +162,15 @@ router.get("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
   }
 });
 
+/* ===========================================================
+   ➕ POST /api/users/create
+   → Tạo người dùng mới (Admin / Employee)
+=========================================================== */
 /**
  * @swagger
  * /api/users/create:
  *   post:
- *     summary: Thêm người dùng mới (admin hoặc employee)
+ *     summary: ➕ Thêm người dùng mới (Admin hoặc Employee)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -207,24 +204,17 @@ router.get("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
  *                 example: "customer"
  *               date_of_birth:
  *                 type: string
- *                 format: date
  *                 example: "2002-08-10"
  *               picture:
  *                 type: string
  *                 example: "https://example.com/avatar.png"
  *     responses:
  *       201:
- *         description: Tạo người dùng thành công
+ *         description: ✅ User added successfully
  *       400:
- *         description: Thiếu thông tin hoặc trùng email/số điện thoại
+ *         description: Email hoặc số điện thoại bị trùng
  *       500:
  *         description: Lỗi máy chủ
- */
-
-
-/**
- * 📌 Thêm người dùng mới
- * POST /api/users/create
  */
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
   const { password, email, full_name, phone_number, role, date_of_birth, picture } = req.body;
@@ -238,33 +228,29 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
   try {
     const pool = await poolPromise;
 
-    // 🔹 Kiểm tra email trùng
+    // Kiểm tra email/phone trùng
     const checkEmail = await pool.request()
       .input("email", sql.VarChar(50), email)
       .query("SELECT COUNT(*) AS count FROM Users WHERE email = @email");
 
-    if (checkEmail.recordset[0].count > 0) {
+    if (checkEmail.recordset[0].count > 0)
       return res.status(400).json({ message: "Email already exists" });
-    }
 
-    // 🔹 Kiểm tra số điện thoại trùng
     const checkPhone = await pool.request()
       .input("phone_number", sql.VarChar(10), phone_number)
       .query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number");
 
-    if (checkPhone.recordset[0].count > 0) {
+    if (checkPhone.recordset[0].count > 0)
       return res.status(400).json({ message: "Phone number already exists" });
-    }
-    // Mã hóa mật khẩu
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    // Thêm người dùng mới
+
     await pool.request()
       .input("email", sql.VarChar(50), email)
       .input("password", sql.VarChar(200), hashedPassword)
       .input("full_name", sql.NVarChar(50), full_name)
       .input("phone_number", sql.VarChar(10), phone_number)
       .input("role", sql.VarChar(10), role)
-  
       .input("date_of_birth", sql.Date, date_of_birth || null)
       .input("picture", sql.NVarChar(sql.MAX), picture || null)
       .query(`
@@ -279,17 +265,21 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
   }
 });
 
+/* ===========================================================
+   ✏️ PUT /api/users/{id}
+   → Cập nhật thông tin người dùng
+=========================================================== */
 /**
  * @swagger
  * /api/users/{id}:
  *   put:
- *     summary: Cập nhật thông tin người dùng
+ *     summary: ✏️ Cập nhật thông tin người dùng
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
  *         schema:
  *           type: integer
@@ -313,7 +303,7 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
  *                 type: string
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: ✅ Cập nhật thành công
  *       400:
  *         description: Dữ liệu không hợp lệ
  *       404:
@@ -321,88 +311,55 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
  *       500:
  *         description: Lỗi máy chủ
  */
-
-
-/**
- * 📌 Cập nhật người dùng
- * PUT /api/users/:id
- */
 router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"), async (req, res) => {
   const { full_name, email, phone_number, role, password, date_of_birth, picture } = req.body;
-  if (Object.keys(req.body).length === 0) {
+
+  if (Object.keys(req.body).length === 0)
     return res.status(400).json({ message: "No fields to update provided" });
-  }
-  // Kiểm tra quyền: user chỉ được sửa thông tin của chính mình, trừ admin
-  if (req.user.role !== "admin" && req.user.id !== parseInt(req.params.id, 10)) {
+
+  if (req.user.role !== "admin" && req.user.id !== parseInt(req.params.id, 10))
     return res.status(403).json({ message: "You are not allowed to modify other people's information" });
-  }
 
   try {
     const pool = await poolPromise;
-
-    // Lấy thông tin user hiện có để so sánh
-    const existingUserResult = await pool.request()
+    const existing = await pool.request()
       .input("user_id", sql.Int, req.params.id)
       .query("SELECT * FROM Users WHERE user_id = @user_id");
-      
-    if (existingUserResult.recordset.length === 0) {
+
+    if (existing.recordset.length === 0)
       return res.status(404).json({ message: "User not found" });
-    }
-    const user = existingUserResult.recordset[0];
 
-    // --- PHẦN LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ---
-
+    const user = existing.recordset[0];
     const setClauses = [];
     const request = pool.request().input("user_id", sql.Int, req.params.id);
 
-    // FIX: Chỉ thêm vào `setClauses` nếu giá trị mới khác giá trị cũ
-    if (full_name !== undefined && full_name !== user.full_name) {
-      setClauses.push("full_name = @full_name");
-      request.input("full_name", sql.NVarChar(50), full_name);
-    }
-    if (email !== undefined && email !== user.email) {
-      // Kiểm tra email trùng trước khi thêm
-      const checkEmail = await pool.request().input("email", sql.VarChar(50), email).input("user_id", sql.Int, req.params.id).query("SELECT COUNT(*) AS count FROM Users WHERE email = @email AND user_id != @user_id");
+    // ✅ Kiểm tra & cập nhật từng trường
+    if (full_name && full_name !== user.full_name) { setClauses.push("full_name = @full_name"); request.input("full_name", sql.NVarChar(50), full_name); }
+    if (email && email !== user.email) {
+      const checkEmail = await pool.request().input("email", sql.VarChar(50), email).input("user_id", sql.Int, req.params.id)
+        .query("SELECT COUNT(*) AS count FROM Users WHERE email = @email AND user_id != @user_id");
       if (checkEmail.recordset[0].count > 0) return res.status(400).json({ message: "Email already exists" });
-      
-      setClauses.push("email = @email");
-      request.input("email", sql.VarChar(50), email);
+      setClauses.push("email = @email"); request.input("email", sql.VarChar(50), email);
     }
-    if (phone_number !== undefined && phone_number !== user.phone_number) {
-       // Kiểm tra phone trùng trước khi thêm
-      const checkPhone = await pool.request().input("phone_number", sql.VarChar(10), phone_number).input("user_id", sql.Int, req.params.id).query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number AND user_id != @user_id");
+    if (phone_number && phone_number !== user.phone_number) {
+      const checkPhone = await pool.request().input("phone_number", sql.VarChar(10), phone_number).input("user_id", sql.Int, req.params.id)
+        .query("SELECT COUNT(*) AS count FROM Users WHERE phone_number = @phone_number AND user_id != @user_id");
       if (checkPhone.recordset[0].count > 0) return res.status(400).json({ message: "Phone number already exists" });
+      setClauses.push("phone_number = @phone_number"); request.input("phone_number", sql.VarChar(10), phone_number);
+    }
+    if (role && role !== user.role) { setClauses.push("role = @role"); request.input("role", sql.VarChar(10), role); }
+    if (date_of_birth && date_of_birth !== user.date_of_birth) { setClauses.push("date_of_birth = @date_of_birth"); request.input("date_of_birth", sql.Date, date_of_birth); }
+    if (picture && picture !== user.picture) { setClauses.push("picture = @picture"); request.input("picture", sql.NVarChar(sql.MAX), picture); }
 
-      setClauses.push("phone_number = @phone_number");
-      request.input("phone_number", sql.VarChar(10), phone_number);
-    }
-    if (role !== undefined && role !== user.role) {
-      setClauses.push("role = @role");
-      request.input("role", sql.VarChar(10), role);
-    }
-    if (date_of_birth !== undefined && date_of_birth !== user.date_of_birth) {
-      setClauses.push("date_of_birth = @date_of_birth");
-      request.input("date_of_birth", sql.Date, date_of_birth);
-    }
-    if (picture !== undefined && picture !== user.picture) {
-      setClauses.push("picture = @picture");
-      request.input("picture", sql.NVarChar(sql.MAX), picture);
-    }
-    
-    // Mật khẩu được xử lý riêng, không cần so sánh
     if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashed = await bcrypt.hash(password, 10);
       setClauses.push("password = @password");
-      request.input("password", sql.VarChar(200), hashedPassword);
-    }
-    // Nếu không có trường nào thay đổi, trả về lỗi
-    if (setClauses.length === 0) {
-      return res.status(400).json({ message: "No new information to update" });
+      request.input("password", sql.VarChar(200), hashed);
     }
 
-    const query = `UPDATE Users SET ${setClauses.join(", ")} WHERE user_id = @user_id`;
-    await request.query(query);
+    if (setClauses.length === 0) return res.status(400).json({ message: "No new information to update" });
 
+    await request.query(`UPDATE Users SET ${setClauses.join(", ")} WHERE user_id = @user_id`);
     res.json({ message: "✅ User updated successfully" });
   } catch (err) {
     console.error("❌ Error in PUT /users/:id:", err.message);
@@ -410,11 +367,15 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
   }
 });
 
+/* ===========================================================
+   🗑️ DELETE /api/users/{id}
+   → Xóa người dùng (Admin)
+=========================================================== */
 /**
  * @swagger
  * /api/users/{id}:
  *   delete:
- *     summary: Xóa người dùng (chỉ admin)
+ *     summary: 🗑️ Xóa người dùng (chỉ Admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -426,17 +387,11 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
  *           type: integer
  *     responses:
  *       200:
- *         description: Xóa người dùng thành công
+ *         description: ✅ User deleted successfully
  *       404:
  *         description: Không tìm thấy người dùng
  *       500:
  *         description: Lỗi máy chủ
- */
-
-
-/**
- * 📌 Xóa người dùng
- * DELETE /api/users/:id
  */
 router.delete("/:id", verifyToken, authorizeRoles("admin"), async (req, res) => {
   try {
@@ -445,9 +400,8 @@ router.delete("/:id", verifyToken, authorizeRoles("admin"), async (req, res) => 
       .input("user_id", sql.Int, req.params.id)
       .query("DELETE FROM Users WHERE user_id = @user_id");
 
-    if (result.rowsAffected[0] === 0) {
+    if (result.rowsAffected[0] === 0)
       return res.status(404).json({ message: "User not found" });
-    }
 
     res.json({ message: "✅ User deleted successfully" });
   } catch (err) {

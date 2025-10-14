@@ -42,9 +42,13 @@ app.use("/api/customer-progress", customerProgressRoutes);
 const notificationRoutes = require("./routes/notifications");
 app.use("/api/notifications", notificationRoutes);
 
-// Import route Subscriptions   
-const subscriptionRoutes = require("./routes/subscriptions");
-app.use("/api/subscriptions", subscriptionRoutes);
+// Import route Subscription Plans
+const subscriptionPlanRoutes = require("./routes/subscriptionPlans");
+app.use("/api/subscription-plans", subscriptionPlanRoutes);
+
+// Import route User Subscriptions  
+const userSubscriptionRoutes = require("./routes/userSubscriptions"); 
+app.use("/api/user-subscriptions", userSubscriptionRoutes);
 
 // Import route Vouchers
 const voucherRoutes = require("./routes/vouchers");
