@@ -1,315 +1,279 @@
-/**
- * 📘 Payments API – Tích hợp thanh toán PayOS
- * ✅ Chuẩn Swagger (OpenAPI 3.0)
- */
-
 const express = require("express");
 const router = express.Router();
-const { PayOS } = require("@payos/node");
 const { sql, poolPromise } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
-
+const { nanoid } = require('nanoid');
 /**
  * @swagger
  * tags:
- *   name: Payments
- *   description: 💳 API quản lý thanh toán qua PayOS
+ *   name: Vouchers
+ *   description: API quản lý mã giảm giá theo số tiền (VND)
  */
 
 /**
  * @swagger
  * components:
  *   schemas:
- *     Payment:
+ *     Voucher:
  *       type: object
  *       properties:
- *         payment_id:
- *           type: integer
- *           example: 101
- *         subcription_id:
- *           type: integer
- *           example: 12
- *         user_id:
- *           type: integer
- *           example: 5
  *         voucher_id:
  *           type: integer
- *           nullable: true
- *           example: null
- *         original_amount:
- *           type: number
- *           example: 200000
- *         discount_amount:
- *           type: number
- *           example: 50000
- *         final_amount:
- *           type: number
- *           example: 150000
- *         currency:
+ *           example: 1
+ *         code:
  *           type: string
- *           example: "VND"
- *         payment_method:
- *           type: string
- *           example: "PayOS"
+ *           example: "A6XI3PZNAN"
  *         description:
  *           type: string
- *           example: "Payment for subscription package"
- *         status:
+ *           example: "Voucher giảm 10,000 VND"
+ *         discount_value:
+ *           type: number
+ *           description: "Số tiền giảm trực tiếp (VND)"
+ *           example: 10000
+ *         max_usage:
+ *           type: integer
+ *           example: 50
+ *         used_count:
+ *           type: integer
+ *           example: 3
+ *         start_date:
  *           type: string
- *           example: "pending"
- *         transaction_id:
+ *           format: date-time
+ *           example: "2025-10-10T00:00:00Z"
+ *         end_date:
  *           type: string
- *           example: "1717698771234"
+ *           format: date-time
+ *           example: "2025-12-31T23:59:59Z"
+ *         created_by:
+ *           type: integer
+ *           example: 2
  *         created_at:
  *           type: string
  *           format: date-time
- *           example: "2025-10-07T09:45:00Z"
- *
- *     CreatePaymentRequest:
+ *           example: "2025-10-15T08:00:00Z"
+ *     CreateVoucherRequest:
  *       type: object
  *       required:
- *         - subcription_id
- *         - original_amount
+ *         - description
+ *         - discount_value
+ *         - max_usage
+ *         - start_date
+ *         - end_date
  *       properties:
- *         subcription_id:
- *           type: integer
- *           example: 1
- *         voucher_id:
- *           type: integer
- *           nullable: true
- *           example: 10
- *         original_amount:
- *           type: number
- *           example: 200000
- *         discount_amount:
- *           type: number
- *           example: 50000
  *         description:
  *           type: string
- *           example: "Thanh toán gói học 1 tháng"
- *         payment_method:
+ *           example: "Voucher giảm 10,000 VND cho đơn hàng trên 100,000 VND"
+ *         discount_value:
+ *           type: number
+ *           description: "Số tiền giảm trực tiếp (VND)"
+ *           example: 10000
+ *         max_usage:
+ *           type: integer
+ *           example: 50
+ *         start_date:
  *           type: string
- *           example: "PayOS"
- *
- *     PaymentResponse:
- *       type: object
- *       properties:
- *         message:
+ *           format: date-time
+ *           example: "2025-10-10T00:00:00Z"
+ *         end_date:
  *           type: string
- *           example: "✅ PayOS payment link created successfully"
- *         checkoutUrl:
- *           type: string
- *           example: "https://pay.payos.vn/checkout/xyz123"
- *         orderCode:
- *           type: string
- *           example: "1717698771234"
- *
- *     ErrorResponse:
- *       type: object
- *       properties:
- *         message:
- *           type: string
- *           example: "Error message"
+ *           format: date-time
+ *           example: "2025-12-31T23:59:59Z"
  */
+
 
 /**
  * @swagger
- * /api/payments/ping:
+ * /api/vouchers:
  *   get:
- *     summary: Kiểm tra API thanh toán hoạt động
- *     tags: [Payments]
- *     responses:
- *       200:
- *         description: Payments API hoạt động bình thường
- *         content:
- *           text/plain:
- *             example: "✅ Payments API is working!"
- */
-router.get("/ping", (req, res) => res.send("✅ Payments API is working!"));
-
-// ⚙️ Khởi tạo PayOS client
-const payos = new PayOS(
-  process.env.PAYOS_CLIENT_ID,
-  process.env.PAYOS_API_KEY,
-  process.env.PAYOS_CHECKSUM_KEY
-);
-
-/**
- * @swagger
- * /api/payments/payos/create:
- *   post:
- *     summary: Tạo liên kết thanh toán PayOS
- *     description: |
- *       Tạo một liên kết thanh toán cho gói đăng ký dựa trên `subscription_id` và số tiền.  
- *       - `user_id` sẽ được lấy tự động từ token người dùng.  
- *       - Hỗ trợ áp dụng voucher giảm giá.
- *     tags: [Payments]
+ *     summary: Lấy danh sách tất cả voucher
+ *     tags: [Vouchers]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CreatePaymentRequest'
  *     responses:
  *       200:
- *         description: Liên kết thanh toán được tạo thành công
+ *         description: Danh sách voucher hiện có
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/PaymentResponse'
- *       400:
- *         description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Voucher'
  *       401:
- *         description: Người dùng chưa đăng nhập hoặc token không hợp lệ
+ *         description: Không có quyền truy cập
  *       500:
  *         description: Lỗi máy chủ
  */
-router.post(
-  "/payos/create",
-  verifyToken,
-  authorizeRoles("admin", "employee", "customer"),
-  async (req, res) => {
-    const user_id = req.user?.id;
-    const { subcription_id, voucher_id, original_amount, discount_amount, description } = req.body;
 
-    if (!user_id)
-      return res.status(401).json({ message: "Unauthorized: missing user token" });
 
-    if (!subcription_id || !original_amount)
-      return res.status(400).json({ message: "Missing required fields: subcription_id, original_amount" });
-
-    const final_amount = original_amount - (discount_amount || 0);
-    if (final_amount <= 0)
-      return res.status(400).json({ message: "Final amount must be greater than 0" });
-
+router.get("/", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
     try {
-      const pool = await poolPromise;
-
-      // ✅ Kiểm tra user hợp lệ
-      const checkUser = await pool
-        .request()
-        .input("user_id", sql.Int, user_id)
-        .query("SELECT COUNT(*) AS count FROM Users WHERE user_id = @user_id");
-      if (checkUser.recordset[0].count === 0)
-        return res.status(400).json({ message: "Invalid user_id" });
-
-      // ✅ Kiểm tra voucher hợp lệ
-      if (voucher_id) {
-        const checkVoucher = await pool
-          .request()
-          .input("voucher_id", sql.Int, voucher_id)
-          .query("SELECT COUNT(*) AS count FROM Vouchers WHERE voucher_id = @voucher_id");
-        if (checkVoucher.recordset[0].count === 0)
-          return res.status(400).json({ message: "Invalid voucher_id" });
-      }
-
-      const orderCode = Date.now(); // Unique transaction ID
-
-      // 🪙 Gọi API PayOS để tạo liên kết thanh toán
-      const paymentLink = await payos.paymentRequests.create({
-        orderCode,
-        amount: final_amount,
-        description: description,
-        returnUrl: process.env.PAYOS_RETURN_URL,
-        cancelUrl: process.env.PAYOS_CANCEL_URL,
-      });
-
-      // 💾 Lưu thông tin thanh toán vào DB
-      await pool
-        .request()
-        .input("subcription_id", sql.Int, subcription_id)
-        .input("user_id", sql.Int, user_id)
-        .input("voucher_id", sql.Int, voucher_id || null)
-        .input("original_amount", sql.Decimal(10, 0), original_amount)
-        .input("discount_amount", sql.Decimal(10, 0), discount_amount || 0)
-        .input("final_amount", sql.Decimal(10, 0), final_amount)
-        .input("currency", sql.VarChar(3), "VND")
-        .input("payment_method", sql.VarChar(15), "PayOS")
-        .input("description", sql.NVarChar(100), description || null)
-        .input("status", sql.NVarChar(10), "pending")
-        .input("transaction_id", sql.NVarChar(50), orderCode.toString())
-        .query(`
-          INSERT INTO Payments (subcription_id, user_id, voucher_id, original_amount, discount_amount, final_amount, currency, payment_method, description, status, transaction_id, created_at)
-          VALUES (@subcription_id, @user_id, @voucher_id, @original_amount, @discount_amount, @final_amount, @currency, @payment_method, @description, @status, @transaction_id, GETDATE())
-        `);
-
-      res.json({
-        message: "✅ PayOS payment link created successfully",
-        checkoutUrl: paymentLink.checkoutUrl,
-        orderCode,
-      });
+        const pool = await poolPromise;
+        const result = await pool.request().query("SELECT * FROM Vouchers ORDER BY created_at DESC");
+        res.json(result.recordset);
     } catch (err) {
-      console.error("❌ Error in /payos/create:", err.message);
-      res.status(500).json({ message: "Server error", error: err.message });
+        console.error("❌ Error in GET /vouchers:", err.message);
+        res.status(500).json({ message: "Server error" });
     }
-  }
-);
+});
 
 /**
  * @swagger
- * /api/payments/payos/return:
+ * /api/vouchers/check/{code}:
  *   get:
- *     summary: Nhận phản hồi từ PayOS sau khi thanh toán
- *     description: |
- *       Khi người dùng hoàn tất hoặc hủy thanh toán, PayOS sẽ gọi endpoint này để cập nhật trạng thái giao dịch.  
- *       Hệ thống sẽ cập nhật trạng thái trong bảng **Payments** và chuyển hướng người dùng về frontend.
- *     tags: [Payments]
+ *     summary: Kiểm tra tính hợp lệ của voucher theo mã code
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: orderCode
+ *       - in: path
+ *         name: code
  *         required: true
  *         schema:
  *           type: string
- *         description: Mã giao dịch (transaction_id)
- *       - in: query
- *         name: status
- *         required: false
- *         schema:
- *           type: string
- *           example: PAID
- *         description: Trạng thái thanh toán từ PayOS (PAID / CANCELLED / FAILED)
+ *         description: Mã voucher cần kiểm tra
  *     responses:
- *       302:
- *         description: Chuyển hướng về trang kết quả thanh toán của frontend
+ *       200:
+ *         description: Voucher hợp lệ và có thể sử dụng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Voucher'
  *       400:
- *         description: Thiếu orderCode hoặc dữ liệu không hợp lệ
+ *         description: Voucher hết hạn hoặc vượt giới hạn sử dụng
+ *       404:
+ *         description: Không tìm thấy voucher
  *       500:
  *         description: Lỗi máy chủ
  */
-router.get("/payos/return", async (req, res) => {
-  try {
-    const { orderCode, status } = req.query;
+router.get("/check/:code", verifyToken, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input("code", sql.VarChar(20), req.params.code)
+            .query("SELECT * FROM Vouchers WHERE code = @code");
 
-    if (!orderCode)
-      return res.status(400).json({ message: "Missing orderCode" });
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ message: "Voucher not found" });
+        }
 
-    const pool = await poolPromise;
+        const voucher = result.recordset[0];
+        const now = new Date();
 
-    let paymentStatus = "failed";
-    if (status?.toUpperCase() === "PAID") paymentStatus = "success";
-    else if (status?.toUpperCase() === "CANCELLED") paymentStatus = "cancelled";
+        if (voucher.used_count >= voucher.max_usage) {
+            return res.status(400).json({ message: "Voucher has reached its usage limit" });
+        }
+        if (now < new Date(voucher.start_date) || now > new Date(voucher.end_date)) {
+            return res.status(400).json({ message: "Voucher is expired or not yet active" });
+        }
 
-    await pool
-      .request()
-      .input("transaction_id", sql.NVarChar(50), orderCode)
-      .input("status", sql.NVarChar(10), paymentStatus)
-      .query(`
-        UPDATE Payments
-        SET status = @status
-        WHERE transaction_id = @transaction_id
-      `);
+        res.json(voucher);
+    } catch (err) {
+        console.error("❌ Error in GET /vouchers/check/:code:", err.message);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
-    console.log(`✅ Payment [${orderCode}] updated to ${paymentStatus}`);
 
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/payment-result?status=${paymentStatus}&orderCode=${orderCode}`
-    );
-  } catch (err) {
-    console.error("❌ Error in /payos/return:", err.message);
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
+
+router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
+    const { description, discount_value, max_usage, start_date, end_date } = req.body;
+
+    if (!description || discount_value === undefined || !max_usage || !start_date || !end_date) {
+        return res.status(400).json({ message: "Missing required fields." });
+    }
+    if (new Date(start_date) >= new Date(end_date)) {
+        return res.status(400).json({ message: "End date must be after start date." });
+    }
+
+    try {
+        const pool = await poolPromise;
+        let uniqueCode;
+        let isCodeUnique = false;
+        do {
+            uniqueCode = nanoid(10).toUpperCase();
+            const checkCode = await pool.request().input("code", sql.VarChar(20), uniqueCode).query("SELECT COUNT(*) AS count FROM Vouchers WHERE code = @code");
+            if (checkCode.recordset[0].count === 0) {
+                isCodeUnique = true;
+            }
+        } while (!isCodeUnique);
+
+        await pool.request()
+            .input("code", sql.VarChar(20), uniqueCode)
+            .input("description", sql.NVarChar(100), description)
+            .input("discount_value", sql.Decimal(10, 0), discount_value)
+            .input("max_usage", sql.Int, max_usage)
+            .input("start_date", sql.DateTime, start_date)
+            .input("end_date", sql.DateTime, end_date)
+            .input("created_by", sql.Int, req.user.id)
+            .query(`
+                INSERT INTO Vouchers (code, description, discount_value, max_usage, start_date, end_date, created_by)
+                VALUES (@code, @description, @discount_value, @max_usage, @start_date, @end_date, @created_by)
+            `);
+
+        res.status(201).json({
+            message: "✅ Voucher created successfully",
+            code: uniqueCode
+        });
+    } catch (err) {
+        console.error("❌ Error in POST /vouchers/create:", err.message);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+
+router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
+    if (Object.keys(req.body).length === 0) {
+        return res.status(400).json({ message: "No fields to update provided." });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const { description, discount_value, max_usage, start_date, end_date } = req.body;
+        
+        const setClauses = [];
+        const request = pool.request().input('voucher_id', sql.Int, req.params.id);
+
+        if (description !== undefined) { setClauses.push("description = @description"); request.input("description", sql.NVarChar(100), description); }
+        if (discount_value !== undefined) { setClauses.push("discount_value = @discount_value"); request.input("discount_value", sql.Decimal(10, 0), discount_value); }
+        if (max_usage !== undefined) { setClauses.push("max_usage = @max_usage"); request.input("max_usage", sql.Int, max_usage); }
+        if (start_date !== undefined) { setClauses.push("start_date = @start_date"); request.input("start_date", sql.DateTime, start_date); }
+        if (end_date !== undefined) { setClauses.push("end_date = @end_date"); request.input("end_date", sql.DateTime, end_date); }
+
+        if (setClauses.length === 0) {
+            return res.status(400).json({ message: "No valid fields to update." });
+        }
+
+        const query = `UPDATE Vouchers SET ${setClauses.join(", ")} WHERE voucher_id = @voucher_id`;
+        const result = await request.query(query);
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: "Voucher not found." });
+        }
+
+        res.json({ message: "✅ Voucher updated successfully." });
+    } catch (err) {
+        console.error("❌ Error in PUT /vouchers/:id:", err.message);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+
+router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('voucher_id', sql.Int, req.params.id)
+            .query("DELETE FROM Vouchers WHERE voucher_id = @voucher_id");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: "Voucher not found." });
+        }
+
+        res.json({ message: "✅ Voucher deleted successfully." });
+    } catch (err) {
+        console.error("❌ Error in DELETE /vouchers/:id:", err.message);
+        res.status(500).json({ message: "Server error" });
+    }
 });
 
 module.exports = router;
