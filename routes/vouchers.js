@@ -173,6 +173,36 @@ router.get("/check/:code", verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/vouchers/create:
+ *   post:
+ *     summary: Tạo voucher mới (chỉ dành cho admin hoặc employee)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateVoucherRequest'
+ *     responses:
+ *       201:
+ *         description: Tạo voucher thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               example:
+ *                 message: "✅ Voucher created successfully"
+ *                 code: "A6XI3PZNAN"
+ *       400:
+ *         description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+ *       401:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 
 
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
@@ -220,7 +250,41 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
     }
 });
 
-
+/**
+ * @swagger
+ * /api/vouchers/{id}:
+ *   put:
+ *     summary: Cập nhật thông tin voucher (admin, employee)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Voucher'
+ *     responses:
+ *       200:
+ *         description: Cập nhật voucher thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               example:
+ *                 message: "✅ Voucher updated successfully."
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
     if (Object.keys(req.body).length === 0) {
         return res.status(400).json({ message: "No fields to update provided." });
@@ -257,7 +321,33 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
     }
 });
 
-
+/**
+ * @swagger
+ * /api/vouchers/{id}:
+ *   delete:
+ *     summary: Xóa voucher (admin, employee)
+ *     tags: [Vouchers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Xóa voucher thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               example:
+ *                 message: "✅ Voucher deleted successfully."
+ *       404:
+ *         description: Không tìm thấy voucher
+ *       500:
+ *         description: Lỗi máy chủ
+ */
 router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
     try {
         const pool = await poolPromise;

@@ -450,8 +450,8 @@ router.post("/google-login", async (req, res) => {
     .request()
     .input("email", sql.VarChar(50), email)
     .input("full_name", sql.NVarChar(50), name)
-    .input("phone_number", sql.VarChar(10), "")
-    .input("password", sql.VarChar(200), "")
+    .input("phone_number", sql.VarChar(10), null)
+    .input("password", sql.VarChar(200), "GOOGLE_USER_PASSWORD")
     .input("role", sql.VarChar(10), "customer")
     .query(`
       INSERT INTO Users (password, email, full_name, phone_number, role, created_at)
