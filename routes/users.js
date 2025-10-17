@@ -91,10 +91,19 @@ router.get("/ping", (req, res) => res.send("Users API is working!"));
 router.get("/", verifyToken, authorizeRoles("admin"), async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query(`
-      SELECT user_id, email, full_name, date_of_birth, picture, phone_number, role, created_at 
-      FROM Users
-    `);
+
+    // Lấy ID của admin đang đăng nhập từ token
+    const currentAdminId = req.user.id;
+
+    const result = await pool.request()
+      // 🛡️ Thêm ID của admin vào query một cách an toàn
+      .input('current_admin_id', sql.Int, currentAdminId)
+      .query(`
+        SELECT user_id, email, full_name, date_of_birth, picture, phone_number, role, created_at 
+        FROM Users
+        WHERE user_id <> @current_admin_id 
+      `);
+
     res.json(result.recordset);
   } catch (err) {
     console.error("❌ Error in GET /users:", err.message);
@@ -393,21 +402,81 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee", "customer"),
  *       500:
  *         description: Lỗi máy chủ
  */
+// File: routes/users.js
+
 router.delete("/:id", verifyToken, authorizeRoles("admin"), async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input("user_id", sql.Int, req.params.id)
-      .query("DELETE FROM Users WHERE user_id = @user_id");
+    try {
+        const userIdToDelete = req.params.id;
+        const pool = await poolPromise;
 
-    if (result.rowsAffected[0] === 0)
-      return res.status(404).json({ message: "User not found" });
+        // An toàn: Không cho phép admin tự xóa tài khoản của chính mình
+        if (req.user.id == userIdToDelete) {
+            return res.status(403).json({
+                message: "Forbidden: Administrators cannot delete their own account."
+            });
+        }
 
-    res.json({ message: "✅ User deleted successfully" });
-  } catch (err) {
-    console.error("❌ Error in DELETE /users/:id:", err.message);
-    res.status(500).send("Server error");
-  }
+        // --- Bắt đầu chuỗi kiểm tra các bảng liên quan ---
+
+        // 1. Kiểm tra bảng UserSubscriptions
+        const subscriptionCheck = await pool.request()
+            .input("user_id", sql.Int, userIdToDelete)
+            .query("SELECT COUNT(*) AS count FROM UserSubscriptions WHERE user_id = @user_id");
+        if (subscriptionCheck.recordset[0].count > 0) {
+            return res.status(400).json({
+                message: "Cannot delete this user.",
+                reason: "User has one or more active or past subscriptions."
+            });
+        }
+
+        // 2. Kiểm tra bảng Payments
+        const paymentCheck = await pool.request()
+            .input("user_id", sql.Int, userIdToDelete)
+            .query("SELECT COUNT(*) AS count FROM Payments WHERE user_id = @user_id");
+        if (paymentCheck.recordset[0].count > 0) {
+            return res.status(400).json({
+                message: "Cannot delete this user.",
+                reason: "User has a payment history."
+            });
+        }
+
+        // 3. 🎟️ Kiểm tra bảng Vouchers (kiểm tra xem user này đã tạo voucher nào chưa)
+        const voucherCheck = await pool.request()
+            .input("created_by", sql.Int, userIdToDelete)
+            .query("SELECT COUNT(*) AS count FROM Vouchers WHERE created_by = @created_by");
+        if (voucherCheck.recordset[0].count > 0) {
+            return res.status(400).json({
+                message: "Cannot delete this user.",
+                reason: "User has created one or more vouchers. Please reassign or delete them first."
+            });
+        }
+
+        // 4. 🔔 Kiểm tra bảng Notifications
+        const notificationCheck = await pool.request()
+            .input("user_id", sql.Int, userIdToDelete)
+            .query("SELECT COUNT(*) AS count FROM Notifications WHERE user_id = @user_id");
+        if (notificationCheck.recordset[0].count > 0) {
+            return res.status(400).json({
+                message: "Cannot delete this user.",
+                reason: "User has one or more personal notifications."
+            });
+        }
+
+        // --- Nếu tất cả kiểm tra đều qua, mới tiến hành xóa ---
+        const result = await pool.request()
+            .input("user_id", sql.Int, userIdToDelete)
+            .query("DELETE FROM Users WHERE user_id = @user_id");
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ message: "✅ User deleted successfully" });
+
+    } catch (err) {
+        console.error("❌ Error in DELETE /users/:id:", err.message);
+        res.status(500).send("Server error");
+    }
 });
 
 module.exports = router;
