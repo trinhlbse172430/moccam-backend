@@ -491,6 +491,48 @@ router.post("/google-login", async (req, res) => {
   }
 });
 
+// Reset Password
+router.post("/reset-password", async (req, res) => {
+    const { email, newPassword } = req.body;
 
+    if (!email || !newPassword) {
+        return res.status(400).json({ message: "Missing email or new password." });
+    }
+
+    // Nên thêm validation cơ bản cho mật khẩu mới (ví dụ: độ dài tối thiểu)
+    if (newPassword.length < 6) {
+         return res.status(400).json({ message: "New password must be at least 6 characters long." });
+    }
+
+    try {
+        const pool = await poolPromise;
+
+        // 1. Kiểm tra xem email có tồn tại không
+        const userResult = await pool.request()
+            .input("email", sql.VarChar(50), email)
+            .query("SELECT user_id FROM Users WHERE email = @email");
+
+        if (userResult.recordset.length === 0) {
+            return res.status(404).json({ message: "Email not found." });
+        }
+
+        const userId = userResult.recordset[0].user_id;
+
+        // 2. Hash mật khẩu mới
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // 3. Cập nhật mật khẩu trong database
+        await pool.request()
+            .input("user_id", sql.Int, userId)
+            .input("password", sql.VarChar(200), hashedNewPassword)
+            .query("UPDATE Users SET password = @password WHERE user_id = @user_id");
+
+        res.json({ message: "✅ Password updated successfully." });
+
+    } catch (err) {
+        console.error("❌ Error in insecure password reset:", err.message);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
 module.exports = router;
