@@ -42,7 +42,7 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
 /* ===========================================================
    🟢 GET /api/subscription-plans
-   → Lấy danh sách toàn bộ gói đăng ký (Customer chỉ thấy active)
+   → Lấy danh sách toàn bộ gói đăng ký
 =========================================================== */
 /**
  * @swagger
@@ -66,7 +66,7 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
  *       500:
  *         description: Lỗi máy chủ
  */
-router.get("/", verifyToken, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const pool = await poolPromise;
     let query = "SELECT * FROM SubscriptionPlans";
