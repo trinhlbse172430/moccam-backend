@@ -67,22 +67,20 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
  *         description: Lỗi máy chủ
  */
 router.get("/", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    let query = "SELECT * FROM SubscriptionPlans";
+    try {
+        const pool = await poolPromise;
+        // Mặc định chỉ lấy các gói đang hoạt động
+        let query = "SELECT plan_id, plan_name, description, price, duration_in_days, is_active, currency FROM SubscriptionPlans WHERE is_active = 1";
+        const request = pool.request();
+        
+        query += " ORDER BY price ASC";
 
-    if (req.user.role === "customer") {
-      query += " WHERE is_active = 1";
+        const result = await request.query(query);
+        res.json(result.recordset);
+    } catch (err) {
+        console.error("❌ Error in GET /subscription-plans:", err.message);
+        res.status(500).json({ message: "Server error" });
     }
-
-    query += " ORDER BY price ASC";
-    const result = await pool.request().query(query);
-
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("❌ Error in GET /subscription-plans:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
 });
 
 /* ===========================================================
