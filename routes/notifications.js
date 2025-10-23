@@ -87,15 +87,20 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 router.get("/", verifyToken, async (req, res) => {
     try {
         const pool = await poolPromise;
-        const result = await pool.request()
-            .input('current_user_id', sql.Int, req.user.id)
-            .query(`
-                SELECT *
-                FROM Notifications
-                WHERE user_id = @current_user_id OR user_id IS NULL
-                ORDER BY created_at DESC;
-            `);
-        
+        let query = "SELECT * FROM Notifications"; // Bắt đầu với câu lệnh lấy tất cả
+        const request = pool.request(); // Tạo request trước
+
+        // 💡 Logic mới: Chỉ lọc nếu người dùng là 'customer'
+        if (req.user.role === 'customer') {
+            query += " WHERE user_id = @current_user_id OR user_id IS NULL";
+            request.input('current_user_id', sql.Int, req.user.id);
+        }
+        // Nếu là admin/employee, không cần thêm mệnh đề WHERE, sẽ lấy tất cả
+
+        query += " ORDER BY created_at DESC"; // Luôn sắp xếp
+
+        const result = await request.query(query); // Thực thi query đã được điều chỉnh
+
         res.json(result.recordset);
     } catch (err) {
         console.error("❌ Error in GET /notifications:", err.message);
