@@ -255,7 +255,7 @@ router.get("/payos/return", async (req, res) => {
   try {
     const { orderCode, status } = req.query;
     if (!orderCode) {
-      return res.redirect(`${process.env.FRONTEND_URL}/payment-result?status=error&message=MissingOrderCode`);
+      return res.redirect(`${process.env.FRONTEND_URL}/home`);
     }
 
     const normalizedStatus = status?.toUpperCase();
@@ -296,14 +296,14 @@ router.get("/payos/return", async (req, res) => {
       }
 
       await transaction.commit();
-      return res.redirect(`${process.env.FRONTEND_URL}/payment-result?status=${paymentStatus}&orderCode=${orderCode}`);
+      return res.redirect(`${process.env.FRONTEND_URL}/home`);
     } catch (err) {
       await transaction.rollback();
       throw err;
     }
   } catch (err) {
     console.error("❌ Error in /payos/return:", err.message);
-    return res.redirect(`${process.env.FRONTEND_URL}/payment-result?status=error&message=ServerError`);
+    return res.redirect(`${process.env.FRONTEND_URL}/home`);
   }
 });
 
