@@ -306,4 +306,82 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
   }
 });
 
+
+/* ===========================================================
+   🔴 DELETE /api/subscription-plans/:id
+   → Xóa gói đăng ký (Admin/Employee)
+=========================================================== */
+/**
+ * @swagger
+ * /api/subscription-plans/{id}:
+ *   delete:
+ *     summary: 🗑️ Xóa một gói đăng ký học
+ *     description: |
+ *       **Lưu ý:** Chỉ có thể xóa gói nếu không có người dùng nào đang đăng ký gói đó và không có lịch sử thanh toán nào liên quan đến gói đó.
+ *     tags: [SubscriptionPlans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của gói đăng ký cần xóa
+ *     responses:
+ *       200:
+ *         description: ✅ Xóa gói đăng ký thành công
+ *       400:
+ *         description: Không thể xóa do gói đang được sử dụng
+ *       404:
+ *         description: Không tìm thấy gói đăng ký
+ *       500:
+ *         description: Lỗi máy chủ
+ */
+router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
+  try {
+    const planIdToDelete = req.params.id;
+    const pool = await poolPromise;
+
+  // 🛡️ Bước 1: Kiểm tra xem có UserSubscriptions nào đang tham chiếu đến plan này không
+    const userSubCheck = await pool.request()
+    .input('plan_id', sql.Int, planIdToDelete)
+    .query("SELECT COUNT(*) AS count FROM UserSubscriptions WHERE plan_id = @plan_id");
+      if (userSubCheck.recordset[0].count > 0) {
+        return res.status(400).json({
+          message: "Cannot delete this plan.",
+          reason: "One or more users are currently subscribed to this plan."
+        });
+    } 
+
+    // 🛡️ Bước 2: Kiểm tra xem có Payments nào đang tham chiếu đến plan này không
+    const paymentCheck = await pool.request()
+      .input('plan_id', sql.Int, planIdToDelete)
+      .query("SELECT COUNT(*) AS count FROM Payments WHERE plan_id = @plan_id");
+
+    if (paymentCheck.recordset[0].count > 0) {
+      return res.status(400).json({
+        message: "Cannot delete this plan.",
+        reason: "There is payment history associated with this plan."
+      });
+  }
+
+    // ✅ Bước 3: Nếu không có tham chiếu, tiến hành xóa
+    const result = await pool.request()
+    .input("plan_id", sql.Int, planIdToDelete)
+    .query("DELETE FROM SubscriptionPlans WHERE plan_id = @plan_id");
+
+  if (result.rowsAffected[0] === 0) {
+    return res.status(404).json({ message: "Subscription plan not found." });
+  }
+
+  res.json({ message: "✅ Subscription plan deleted successfully." });
+
+  } catch (err) {
+    console.error("❌ Error in DELETE /subscription-plans/:id:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 module.exports = router;

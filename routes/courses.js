@@ -194,28 +194,26 @@ router.get("/:id", async (req, res) => {
  * POST /api/courses
  */
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-    const { course_name, description, level, created_by, is_free  } = req.body;
+    const created_by = req.user.id; 
+    const { course_name, description, level, is_free } = req.body;
 
-    if (!course_name || !level || typeof created_by === "undefined") {
-        return res.status(400).json({ message: "Missing required fields: course_name, level, created_by" });
+    // Cập nhật validation (không cần created_by nữa)
+    if (!course_name || !level ) {
+        return res.status(400).json({ message: "Missing required fields: course_name, level" });
     }
 
     try {
         const pool = await poolPromise;
-        const is_free = (is_free === undefined || is_free === null) ? 0 : (is_free ? 1 : 0);
-        const checkCourse = await pool.request()
-            .input("created_by", sql.Int, created_by)
-            .query("SELECT COUNT(*) AS count FROM Courses WHERE created_by = @created_by");
-        if (checkCourse.recordset[0].count === 0) {
-            return res.status(400).json({ message: "Invalid created_by: employee not found" });
-        }
+        
+        // Xử lý is_free: nếu không gửi thì mặc định là 0 (false)
+        const isFreeBit = (is_free === true) ? 1 : 0;
 
         await pool.request()
             .input("course_name", sql.NVarChar(100), course_name)
             .input("description", sql.NVarChar(200), description || null)
             .input("level", sql.VarChar(20), level)
-            .input("is_free", sql.Bit, is_free)
-            .input("created_by", sql.Int, created_by)
+            .input("is_free", sql.Bit, isFreeBit) // Dùng biến đã xử lý
+            .input("created_by", sql.Int, created_by) // Dùng created_by lấy từ token
             .query(`
                 INSERT INTO Courses (course_name, description, level, created_by, is_free, created_at)
                 VALUES (@course_name, @description, @level, @created_by, @is_free, GETDATE())

@@ -74,6 +74,10 @@ app.use("/api/lesson-progress", lessonProgressRoutes);
 const userActivityLogRoutes = require("./routes/userActivityLog");
 app.use("/api/activity", userActivityLogRoutes);
 
+// Import route Dashboard
+const dashboardRoutes = require("./routes/dashboard");
+app.use("/api/dashboard", dashboardRoutes);
+
 // chặn XSS, clickjacking, sniffing
 const helmet = require("helmet");
 app.use(helmet()); 
