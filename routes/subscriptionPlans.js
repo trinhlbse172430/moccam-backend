@@ -307,37 +307,6 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
 });
 
 
-/* ===========================================================
-   🔴 DELETE /api/subscription-plans/:id
-   → Xóa gói đăng ký (Admin/Employee)
-=========================================================== */
-/**
- * @swagger
- * /api/subscription-plans/{id}:
- *   delete:
- *     summary: 🗑️ Xóa một gói đăng ký học
- *     description: |
- *       **Lưu ý:** Chỉ có thể xóa gói nếu không có người dùng nào đang đăng ký gói đó và không có lịch sử thanh toán nào liên quan đến gói đó.
- *     tags: [SubscriptionPlans]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID của gói đăng ký cần xóa
- *     responses:
- *       200:
- *         description: ✅ Xóa gói đăng ký thành công
- *       400:
- *         description: Không thể xóa do gói đang được sử dụng
- *       404:
- *         description: Không tìm thấy gói đăng ký
- *       500:
- *         description: Lỗi máy chủ
- */
 router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
   try {
     const planIdToDelete = req.params.id;
