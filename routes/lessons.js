@@ -200,7 +200,7 @@ router.get("/:id", async (req, res) => {
  */
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
   const { course_id, lesson_name, description, video_url, picture_url, is_free } = req.body;
-
+  const created_by = req.user.id;
   // Kiểm tra dữ liệu bắt buộc
   if (!course_id || !lesson_name) {
     return res.status(400).json({ message: "Missing required fields: course_id, lesson_name" });
@@ -208,7 +208,7 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
 
   try {
     const pool = await poolPromise;
-    const is_free = is_free ? 1 : 0;
+    const isFreeBit = (is_free === true || is_free === 1) ? 1 : 0;
     const checkCourse = await pool.request()
       .input("course_id", sql.Int, course_id)
       .query("SELECT COUNT(*) AS count FROM Courses WHERE course_id = @course_id");
@@ -222,7 +222,7 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
       .input("description", sql.NVarChar(200), description || null)
       .input("video_url", sql.VarChar(300), video_url || null)
       .input("picture_url", sql.VarChar(300), picture_url || null)
-      .input("is_free", sql.Bit, is_free)
+      .input("is_free", sql.Bit, isFreeBit)
       .query(`
         INSERT INTO Lessons (course_id, lesson_name, description, video_url, picture_url, is_free, created_at)
         VALUES (@course_id, @lesson_name, @description, @video_url, @picture_url, @is_free, GETDATE())

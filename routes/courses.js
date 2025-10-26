@@ -206,7 +206,7 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
         const pool = await poolPromise;
         
         // Xử lý is_free: nếu không gửi thì mặc định là 0 (false)
-        const isFreeBit = (is_free === true) ? 1 : 0;
+        const isFreeBit = (is_free === true || is_free === 1) ? 1 : 0;
 
         await pool.request()
             .input("course_name", sql.NVarChar(100), course_name)
