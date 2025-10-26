@@ -266,15 +266,15 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
  */
 
 router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-    const { course_name, description, level, created_by, is_free } = req.body;
-
-    if (!course_name || !level || typeof created_by === "undefined") {
-        return res.status(400).json({ message: "Missing required fields: course_name, level, created_by" });
+    const { course_name, description, level, is_free } = req.body;
+    const created_by = req.user.id;
+    if (!course_name || !level ) {
+        return res.status(400).json({ message: "Missing required fields: course_name, level" });
     }
 
     try {
         const pool = await poolPromise;
-        const is_free = (is_free === undefined || is_free === null) ? 0 : (is_free ? 1 : 0);
+        const isFreeBit = (is_free === true || is_free === 1) ? 1 : 0;
         const checkCourse = await pool.request()
             .input("created_by", sql.Int, created_by)
             .query("SELECT COUNT(*) AS count FROM Courses WHERE created_by = @created_by");
@@ -286,7 +286,7 @@ router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req,
             .input("course_name", sql.NVarChar(100), course_name)
             .input("description", sql.NVarChar(200), description || null)
             .input("level", sql.VarChar(20), level || 0)
-            .input("is_free", sql.Bit, is_free)
+            .input("is_free", sql.Bit, isFreeBit)
             .input("created_by", sql.Int, created_by)
             .query(`
                 UPDATE Courses
