@@ -52,10 +52,8 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
             INSERT INTO SubscriptionPlans (plan_name, description, price, currency, duration_in_days, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, NOW())
         `;
-        // Chuyển is_active sang 1 hoặc 0
-        const isActiveBit = (is_active === true || is_active === 1) ? 1 : 0;
         const [result] = await pool.query(sqlInsert, [
-            plan_name, description || null, price, 'VND', duration_in_days, isActiveBit
+            plan_name, description || null, price, 'VND', duration_in_days, is_active
         ]);
 
         // Lấy lại bản ghi vừa tạo để trả về (tùy chọn)
