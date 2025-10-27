@@ -53,7 +53,7 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
             VALUES (?, ?, ?, ?, ?, ?, NOW())
         `;
         // Chuyển is_active sang 1 hoặc 0
-        const isActiveBit = is_active ? 1 : 0;
+        const isActiveBit = (is_active === true || is_active === 1) ? 1 : 0;
         const [result] = await pool.query(sqlInsert, [
             plan_name, description || null, price, 'VND', duration_in_days, isActiveBit
         ]);

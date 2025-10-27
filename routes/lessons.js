@@ -139,7 +139,6 @@ router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (r
             { table: "Hand_Motions", column: "lesson_id", message: "Có dữ liệu bài tập AI liên quan đến bài học này." },
             { table: "Comments", column: "lesson_id", message: "Có bình luận liên quan đến bài học này." },
             { table: "LessonProgress", column: "lesson_id", message: "Có dữ liệu tiến độ học của người dùng liên quan đến bài học này." },
-            { table: "AIPracticeSessions", column: "lesson_id", message: "Có lịch sử luyện tập AI liên quan đến bài học này." }
         ];
 
         for (const check of checks) {
