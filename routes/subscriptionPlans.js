@@ -41,7 +41,7 @@ router.get("/:id", verifyToken, async (req, res) => { // Giữ verifyToken vì c
 
 // POST /api/subscription-plans/create (Tạo gói mới - Admin/Employee)
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-    const { plan_name, description, price, duration_in_days, is_active = true } = req.body; // Mặc định is_active là true
+    const { plan_name, description, price, duration_in_days, is_active} = req.body; // Mặc định is_active là true
 
     if (!plan_name || price === undefined || !duration_in_days) {
         return res.status(400).json({ message: "Thiếu trường bắt buộc: plan_name, price, duration_in_days." });
@@ -49,20 +49,32 @@ router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (
 
     try {
         const sqlInsert = `
-            INSERT INTO SubscriptionPlans (plan_name, description, price, currency, duration_in_days, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())
+            INSERT INTO SubscriptionPlans (plan_name, description, price, currency, duration_in_days, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
         `;
+        // ✅ Chuyển đổi boolean thành 1 hoặc 0
+        const isActiveBit = is_active ? 1 : 0; 
+
         const [result] = await pool.query(sqlInsert, [
-            plan_name, description || null, price, 'VND', duration_in_days, is_active
+            plan_name,
+            description || null,
+            price,
+            'VND',
+            duration_in_days,
+            isActiveBit
         ]);
 
-        // Lấy lại bản ghi vừa tạo để trả về (tùy chọn)
+        // Lấy lại bản ghi vừa tạo để trả về
         const [newPlanRows] = await pool.query("SELECT * FROM SubscriptionPlans WHERE plan_id = ?", [result.insertId]);
 
         res.status(201).json(newPlanRows[0]);
 
     } catch (err) {
         console.error("❌ Lỗi POST /subscription-plans/create:", err.message);
+        // Bắt lỗi trùng tên nếu có UNIQUE constraint
+        if (err.code === 'ER_DUP_ENTRY') {
+             return res.status(400).json({ message: "Tên gói đăng ký đã tồn tại." });
+        }
         res.status(500).json({ message: "Lỗi máy chủ" });
     }
 });
