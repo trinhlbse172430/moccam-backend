@@ -1,361 +1,261 @@
 const express = require("express");
 const router = express.Router();
 const { PayOS } = require("@payos/node");
-const { sql, poolPromise } = require("../db");
+const { pool } = require("../db"); // Import pool từ db.js mới
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
-// ⚙️ Khởi tạo PayOS client
+// Khởi tạo PayOS client
 const payos = new PayOS(
   process.env.PAYOS_CLIENT_ID,
   process.env.PAYOS_API_KEY,
   process.env.PAYOS_CHECKSUM_KEY
 );
 
-/**
- * @swagger
- * tags:
- *   name: Payments
- *   description: 💳 API quản lý thanh toán qua PayOS
- */
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     Payment:
- *       type: object
- *       properties:
- *         payment_id:
- *           type: integer
- *           example: 1
- *         user_id:
- *           type: integer
- *           example: 12
- *         plan_id:
- *           type: integer
- *           example: 3
- *         voucher_id:
- *           type: integer
- *           nullable: true
- *           example: 5
- *         original_amount:
- *           type: number
- *           example: 299000
- *         discount_amount:
- *           type: number
- *           example: 50000
- *         final_amount:
- *           type: number
- *           example: 249000
- *         payment_method:
- *           type: string
- *           example: "PayOS"
- *         status:
- *           type: string
- *           example: "pending"
- *         transaction_id:
- *           type: string
- *           example: "1731419053267"
- *         created_at:
- *           type: string
- *           format: date-time
- *           example: "2025-10-10T14:20:00Z"
- */
-
-/* ===========================================================
-   🟢 POST /api/payments/payos/create
-   → Tạo giao dịch thanh toán PayOS
-=========================================================== */
-/**
- * @swagger
- * /api/payments/payos/create:
- *   post:
- *     summary: 💰 Tạo giao dịch thanh toán qua PayOS
- *     tags: [Payments]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - plan_id
- *             properties:
- *               plan_id:
- *                 type: integer
- *                 example: 2
- *               voucher_id:
- *                 type: integer
- *                 example: 5
- *     responses:
- *       200:
- *         description: ✅ Tạo link thanh toán thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "✅ PayOS payment link created successfully"
- *                 checkoutUrl:
- *                   type: string
- *                   example: "https://pay.payos.vn/checkout/abcdef"
- *                 orderCode:
- *                   type: string
- *                   example: "1731419053267"
- *       400:
- *         description: Thiếu thông tin hoặc voucher không hợp lệ
- *       404:
- *         description: Không tìm thấy gói học
- *       500:
- *         description: Lỗi máy chủ
- */
-// File: routes/payments.js
-
+// POST /api/payments/payos/create (Tạo link thanh toán)
 router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req, res) => {
     const user_id = req.user.id;
     const { plan_id, voucher_id } = req.body;
 
     if (!plan_id) {
-        return res.status(400).json({ message: "Missing required field: plan_id" });
+        return res.status(400).json({ message: "Thiếu trường bắt buộc: plan_id" });
     }
 
+    let connection; // Khai báo connection ở ngoài để dùng trong finally
     try {
-        const pool = await poolPromise;
+        // Lấy kết nối từ pool
+        connection = await pool.getConnection();
 
-        // 1. Lấy thông tin gói và voucher
-        const planResult = await pool.request().input("plan_id", sql.Int, plan_id).query("SELECT plan_name, price FROM SubscriptionPlans WHERE plan_id = @plan_id AND is_active = 1");
-        if (planResult.recordset.length === 0) {
-            return res.status(404).json({ message: "Subscription plan not found or is not active." });
+        // 1. Lấy thông tin gói
+        const [planRows] = await connection.query(
+            "SELECT plan_name, price FROM SubscriptionPlans WHERE plan_id = ? AND is_active = 1",
+            [plan_id]
+        );
+
+        if (planRows.length === 0) {
+            connection.release();
+            return res.status(404).json({ message: "Gói đăng ký không tồn tại hoặc không hoạt động." });
         }
 
-        const plan = planResult.recordset[0];
+        const plan = planRows[0];
         let original_amount = plan.price;
         let discount_amount = 0;
+        let currentVoucherId = voucher_id || null; // Dùng voucher_id truyền vào hoặc null
 
-        if (voucher_id) {
-            const voucherResult = await pool.request().input("voucher_id", sql.Int, voucher_id).query("SELECT discount_value, used_count, max_usage FROM Vouchers WHERE voucher_id = @voucher_id AND GETDATE() BETWEEN start_date AND end_date");
-            if (voucherResult.recordset.length > 0) {
-                const voucher = voucherResult.recordset[0];
+        // 2. Kiểm tra voucher (nếu có)
+        if (currentVoucherId) {
+            const [voucherRows] = await connection.query(
+                "SELECT discount_value, used_count, max_usage FROM Vouchers WHERE voucher_id = ? AND NOW() BETWEEN start_date AND end_date", // Giả sử voucher có is_active = 1
+                [currentVoucherId]
+            );
+
+            if (voucherRows.length > 0) {
+                const voucher = voucherRows[0];
                 if (voucher.used_count >= voucher.max_usage) {
-                    return res.status(400).json({ message: "Voucher has reached its usage limit." });
+                    connection.release();
+                    return res.status(400).json({ message: "Voucher đã hết lượt sử dụng." });
                 }
                 discount_amount = voucher.discount_value;
             } else {
-                return res.status(400).json({ message: "Voucher is not valid." });
+                 connection.release();
+                 return res.status(400).json({ message: "Voucher không hợp lệ." });
             }
         }
 
-        // 2. Tính toán và xác thực số tiền cuối cùng
+        // 3. Tính toán số tiền cuối cùng
         const final_amount = Math.max(0, original_amount - discount_amount);
+        const description = `Thanh toán gói ${plan.plan_name}`;
+        const descriptionForPayOS = description.substring(0, 25);
 
-        // 3. 💡 LOGIC MỚI: Xử lý trường hợp GÓI MIỄN PHÍ (0đ)
+        // 4. Xử lý gói miễn phí (0đ)
         if (final_amount === 0) {
-            const transaction = new sql.Transaction(pool);
-            await transaction.begin();
+            await connection.beginTransaction(); // Bắt đầu transaction cho gói 0đ
             try {
-                // Ghi nhận thanh toán thành công ngay lập tức
-                await transaction.request()
-                    .input("user_id", sql.Int, user_id).input("plan_id", sql.Int, plan_id).input("voucher_id", sql.Int, voucher_id || null)
-                    .input("original_amount", sql.Decimal(10, 2), original_amount).input("discount_amount", sql.Decimal(10, 2), discount_amount)
-                    .input("final_amount", sql.Decimal(10, 2), 0)
-                    .input("description", sql.NVarChar(255), `Kích hoạt miễn phí ${plan.plan_name}`)
-                    .input("status", sql.NVarChar(20), "success") // Trạng thái SUCCESS
-                    .input("payment_method", sql.NVarChar(50), "PayOS")
-                    .input("transaction_id", sql.NVarChar(100), `FREE_${Date.now()}`)
-                    .query(`INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, description, status, transaction_id, payment_method) 
-                    VALUES (@user_id, @plan_id, @voucher_id, @original_amount, @discount_amount, @final_amount, @description, @status, @transaction_id, @payment_method)`);
+                // Ghi nhận thanh toán success
+                const paymentInsertSql = `
+                    INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, payment_method, description, status, transaction_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                `;
+                const transactionIdFree = `FREE_${Date.now()}`;
+                await connection.query(paymentInsertSql, [
+                    user_id, plan_id, currentVoucherId, original_amount, discount_amount, 0, 'Voucher', description, 'success', transactionIdFree
+                ]);
 
-                // Cập nhật voucher
-                if (voucher_id) {
-                    await transaction.request().input("voucher_id", sql.Int, voucher_id).query(`UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = @voucher_id`);
+                // Cập nhật voucher nếu có
+                if (currentVoucherId) {
+                    await connection.query("UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = ?", [currentVoucherId]);
                 }
 
                 // Kích hoạt subscription
-                const subResult = await transaction.request().input("plan_id", sql.Int, plan_id).query("SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = @plan_id");
-                const duration = subResult.recordset[0].duration_in_days;
-                await transaction.request().input("user_id", sql.Int, user_id).input("plan_id", sql.Int, plan_id)
-                    .query(`INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status) VALUES (@user_id, @plan_id, GETDATE(), DATEADD(day, ${duration}, GETDATE()), 'active')`);
-                
-                await transaction.commit();
+                const [subPlanRows] = await connection.query("SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = ?", [plan_id]);
+                const duration = subPlanRows[0]?.duration_in_days || 30; // Mặc định 30 ngày nếu không tìm thấy
+                const subInsertSql = `
+                    INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status)
+                    VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? DAY), 'active')
+                `;
+                await connection.query(subInsertSql, [user_id, plan_id, duration]);
 
-                return res.status(200).json({ message: "✅ Voucher applied. Your plan has been activated for free!" });
+                await connection.commit(); // Hoàn tất transaction
+                connection.release(); // Trả kết nối về pool
+                return res.status(200).json({ message: "✅ Voucher đã áp dụng. Gói của bạn đã được kích hoạt miễn phí!", orderCode: null, checkoutUrl: null });
+
             } catch (err) {
-                await transaction.rollback();
-                throw err;
+                await connection.rollback(); // Rollback nếu có lỗi
+                connection.release();
+                throw err; // Ném lỗi ra ngoài để khối catch bên ngoài xử lý
             }
         }
 
-        // 4. LOGIC CŨ (cho các gói có trả phí > 0) - ĐÃ ĐỔI THỨ TỰ
-        const orderCode = Date.now();
-        const descriptionForPayOS = `Thanh toán ${plan.plan_name}`.substring(0, 25);
-        
-        // BƯỚC 4.1: TẠO LINK PAYOS TRƯỚC
+        // 5. Xử lý gói có phí (> 0đ)
+        const orderCode = Date.now().toString(); // Chuyển sang chuỗi
+
+        // 5.1 Tạo link PayOS trước
         const paymentLink = await payos.paymentRequests.create({
-            orderCode,
+            orderCode: parseInt(orderCode), // PayOS yêu cầu number
             amount: final_amount,
             description: descriptionForPayOS,
             returnUrl: process.env.PAYOS_RETURN_URL,
             cancelUrl: process.env.PAYOS_CANCEL_URL,
         });
 
-        // BƯỚC 4.2: CHỈ KHI TẠO LINK THÀNH CÔNG MỚI LƯU VÀO DB
-        await pool.request()
-            .input("user_id", sql.Int, user_id).input("plan_id", sql.Int, plan_id).input("voucher_id", sql.Int, voucher_id || null)
-            .input("original_amount", sql.Decimal(10, 2), original_amount).input("discount_amount", sql.Decimal(10, 2), discount_amount)
-            .input("final_amount", sql.Decimal(10, 2), final_amount)
-            .input("description", sql.NVarChar(255), descriptionForPayOS)
-            .input("status", sql.NVarChar(20), "pending")
-             .input("payment_method", sql.NVarChar(50), "PayOS")
-            .input("transaction_id", sql.NVarChar(100), orderCode.toString())
-            .query(`INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, description, status, transaction_id, payment_method) VALUES (@user_id, @plan_id, @voucher_id, @original_amount, @discount_amount, @final_amount, @description, @status, @transaction_id, @payment_method)`);
+        // 5.2 Lưu vào DB sau khi có link
+        const paymentInsertSqlPaid = `
+            INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, payment_method, description, status, transaction_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `;
+        await connection.query(paymentInsertSqlPaid, [
+            user_id, plan_id, currentVoucherId, original_amount, discount_amount, final_amount, 'PayOS', description, 'pending', orderCode
+        ]);
 
+        connection.release(); // Trả kết nối về pool
         res.json({
-            message: "✅ PayOS payment link created successfully",
+            message: "✅ Tạo link thanh toán PayOS thành công",
             checkoutUrl: paymentLink.checkoutUrl,
-            orderCode,
+            orderCode: orderCode, // Trả về dạng chuỗi
         });
 
     } catch (err) {
-        console.error("❌ Error in /payos/create:", err.message);
-        res.status(500).json({ message: "Server error", error: err.message });
+        if (connection) connection.release(); // Đảm bảo trả kết nối nếu có lỗi
+        console.error("❌ Lỗi /payos/create:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ", error: err.message });
     }
 });
 
-/* ===========================================================
-   🔁 GET /api/payments/payos/return
-   → Nhận callback từ PayOS sau khi thanh toán
-=========================================================== */
-/**
- * @swagger
- * /api/payments/payos/return:
- *   get:
- *     summary: 🔁 Callback kết quả thanh toán từ PayOS
- *     tags: [Payments]
- *     parameters:
- *       - in: query
- *         name: orderCode
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: status
- *         required: true
- *         schema:
- *           type: string
- *           enum: [PAID, CANCELLED, FAILED]
- *     responses:
- *       302:
- *         description: Redirect về trang kết quả của frontend
- */
+// GET /api/payments/payos/return (Callback từ PayOS)
 router.get("/payos/return", async (req, res) => {
-  try {
-    const { orderCode, status } = req.query;
-    if (!orderCode) {
-      return res.redirect(`${process.env.FRONTEND_URL}/home`);
-    }
-
-    const normalizedStatus = status?.toUpperCase();
-    let paymentStatus = normalizedStatus === "PAID" ? "success" : normalizedStatus === "CANCELLED" ? "cancelled" : "failed";
-
-    const pool = await poolPromise;
-    const transaction = new sql.Transaction(pool);
-    await transaction.begin();
-
+    let connection;
     try {
-      await transaction.request()
-        .input("transaction_id", sql.NVarChar(100), orderCode)
-        .input("status", sql.NVarChar(20), paymentStatus)
-        .query(`UPDATE Payments SET status = @status WHERE transaction_id = @transaction_id`);
-
-      if (paymentStatus === "success") {
-        const paymentResult = await transaction.request()
-          .input("transaction_id", sql.NVarChar(100), orderCode)
-          .query("SELECT user_id, plan_id, voucher_id FROM Payments WHERE transaction_id = @transaction_id");
-
-        if (paymentResult.recordset.length === 0) throw new Error(`Payment not found: ${orderCode}`);
-        const { user_id, plan_id, voucher_id } = paymentResult.recordset[0];
-
-        if (voucher_id) {
-          await transaction.request().input("voucher_id", sql.Int, voucher_id)
-            .query("UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = @voucher_id");
+        const { orderCode, status } = req.query;
+        if (!orderCode) {
+            return res.redirect(`${process.env.FRONTEND_URL}/home`);
         }
 
-        const subResult = await transaction.request().input("plan_id", sql.Int, plan_id)
-          .query("SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = @plan_id");
+        const normalizedStatus = status?.toUpperCase();
+        let paymentStatus = normalizedStatus === "PAID" ? "success" : normalizedStatus === "CANCELLED" ? "cancelled" : "failed";
 
-        const duration = subResult.recordset[0]?.duration_in_days || 30;
-        await transaction.request()
-          .input("user_id", sql.Int, user_id)
-          .input("plan_id", sql.Int, plan_id)
-          .query(`INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status)
-                  VALUES (@user_id, @plan_id, GETDATE(), DATEADD(day, ${duration}, GETDATE()), 'active')`);
-      }
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
 
-      await transaction.commit();
-      return res.redirect(`${process.env.FRONTEND_URL}/home`);
+        try {
+            // Cập nhật trạng thái Payment
+            const [updateResult] = await connection.query(
+                "UPDATE Payments SET status = ? WHERE transaction_id = ?",
+                [paymentStatus, orderCode]
+            );
+
+             if (updateResult.affectedRows === 0) {
+                 // Có thể giao dịch đã được xử lý bởi webhook (nếu dùng) hoặc orderCode sai
+                 console.warn(`Payment record not found or already updated for orderCode: ${orderCode}`);
+                 // Vẫn nên commit để không rollback các thay đổi khác (nếu có)
+                 // Hoặc có thể rollback tùy logic của bạn
+             } else {
+                 console.log(`✅ Payment [${orderCode}] updated to ${paymentStatus}`);
+             }
+
+
+            // Kích hoạt Subscription và cập nhật Voucher nếu thành công
+            if (paymentStatus === 'success') {
+                const [paymentRows] = await connection.query(
+                    "SELECT user_id, plan_id, voucher_id FROM Payments WHERE transaction_id = ?",
+                    [orderCode]
+                );
+
+                if (paymentRows.length === 0) throw new Error(`Payment record inconsistency for orderCode: ${orderCode}`);
+
+                const { user_id, plan_id, voucher_id } = paymentRows[0];
+
+                // Cập nhật Voucher nếu có
+                if (voucher_id) {
+                    await connection.query(
+                        "UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = ?",
+                        [voucher_id]
+                    );
+                    console.log(`🎟️ Voucher [${voucher_id}] usage count incremented.`);
+                }
+
+                // Kích hoạt Subscription (chống trùng lặp)
+                const [existingSubRows] = await connection.query(
+                    "SELECT user_subscription_id FROM UserSubscriptions WHERE user_id = ? AND plan_id = ? AND start_date >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)",
+                    [user_id, plan_id]
+                );
+
+                if (existingSubRows.length === 0) {
+                    const [subPlanRows] = await connection.query(
+                        "SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = ?",
+                        [plan_id]
+                    );
+                    if (subPlanRows.length === 0) throw new Error(`Plan details not found: ${plan_id}`);
+
+                    const duration = subPlanRows[0].duration_in_days;
+                    const subInsertSql = `
+                        INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status)
+                        VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? DAY), 'active')
+                    `;
+                    await connection.query(subInsertSql, [user_id, plan_id, duration]);
+                    console.log(`✅ Activated subscription plan ${plan_id} for user ${user_id}`);
+                } else {
+                     console.log(`ℹ️ Subscription for user ${user_id}, plan ${plan_id} already activated recently.`);
+                }
+            }
+
+            await connection.commit(); // Hoàn tất transaction
+        } catch (err) {
+            await connection.rollback(); // Rollback nếu có lỗi bên trong transaction
+            throw err; // Ném lỗi ra ngoài
+        } finally {
+             if(connection) connection.release(); // Luôn trả kết nối sau transaction
+        }
+
+        return res.redirect(`${process.env.FRONTEND_URL}/home`);
     } catch (err) {
-      await transaction.rollback();
-      throw err;
+        if (connection) connection.release(); // Đảm bảo trả kết nối nếu có lỗi ngoài transaction
+        console.error("❌ Lỗi /payos/return:", err.message);
+        return res.redirect(`${process.env.FRONTEND_URL}/home`);
     }
-  } catch (err) {
-    console.error("❌ Error in /payos/return:", err.message);
-    return res.redirect(`${process.env.FRONTEND_URL}/home`);
-  }
 });
 
-/* ===========================================================
-   🧾 GET /api/payments
-   → Xem danh sách thanh toán (theo quyền)
-=========================================================== */
-/**
- * @swagger
- * /api/payments:
- *   get:
- *     summary: 🧾 Lấy danh sách lịch sử thanh toán
- *     tags: [Payments]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Danh sách thanh toán được trả về thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Payment'
- *       401:
- *         description: Token không hợp lệ
- *       500:
- *         description: Lỗi máy chủ
- */
+// GET /api/payments (Lấy lịch sử thanh toán)
 router.get("/", verifyToken, authorizeRoles("admin", "employee", "customer"), async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    let query = `
-      SELECT p.*, u.full_name AS user_name, sp.plan_name
-      FROM Payments p
-      JOIN Users u ON p.user_id = u.user_id
-      LEFT JOIN SubscriptionPlans sp ON p.plan_id = sp.plan_id
-    `;
-    const request = pool.request();
+    try {
+        let sqlQuery = `
+            SELECT p.*, u.full_name AS user_name, sp.plan_name
+            FROM Payments p
+            JOIN Users u ON p.user_id = u.user_id
+            LEFT JOIN SubscriptionPlans sp ON p.plan_id = sp.plan_id
+        `;
+        const params = [];
 
-    if (req.user.role === "customer") {
-      query += " WHERE p.user_id = @user_id";
-      request.input("user_id", sql.Int, req.user.id);
+        if (req.user.role === "customer") {
+            sqlQuery += " WHERE p.user_id = ?";
+            params.push(req.user.id);
+        }
+
+        sqlQuery += " ORDER BY p.created_at DESC";
+        const [rows] = await pool.query(sqlQuery, params);
+        res.json(rows);
+    } catch (err) {
+        console.error("❌ Lỗi GET /payments:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
     }
-
-    query += " ORDER BY p.created_at DESC";
-    const result = await request.query(query);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("❌ Error in GET /payments:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
 });
 
 module.exports = router;

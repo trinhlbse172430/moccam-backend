@@ -1,356 +1,147 @@
 const express = require("express");
 const router = express.Router();
-const { sql, poolPromise } = require("../db");
+const { pool } = require("../db"); // Import pool từ db.js mới
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
-/**
- * @swagger
- * tags:
- *   name: SubscriptionPlans
- *   description: 💎 API quản lý gói đăng ký học (Subscription Plans)
- */
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     SubscriptionPlan:
- *       type: object
- *       properties:
- *         plan_id:
- *           type: integer
- *           example: 1
- *         plan_name:
- *           type: string
- *           example: "Gói học 3 tháng"
- *         description:
- *           type: string
- *           example: "Truy cập toàn bộ khóa học trong 90 ngày"
- *         price:
- *           type: number
- *           example: 299000
- *         currency:
- *           type: string
- *           example: "VND"
- *         duration_in_days:
- *           type: integer
- *           example: 90
- *         is_active:
- *           type: boolean
- *           example: true
- */
-
-/* ===========================================================
-   🟢 GET /api/subscription-plans
-   → Lấy danh sách toàn bộ gói đăng ký
-=========================================================== */
-/**
- * @swagger
- * /api/subscription-plans:
- *   get:
- *     summary: 📋 Lấy danh sách tất cả gói đăng ký học
- *     tags: [SubscriptionPlans]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Danh sách gói đăng ký trả về thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/SubscriptionPlan'
- *       401:
- *         description: Token không hợp lệ
- *       500:
- *         description: Lỗi máy chủ
- */
+// GET /api/subscription-plans (Lấy danh sách gói)
 router.get("/", async (req, res) => {
     try {
-        const pool = await poolPromise;
-        // Mặc định chỉ lấy các gói đang hoạt động
-        let query = "SELECT plan_id, plan_name, description, price, duration_in_days, is_active, currency FROM SubscriptionPlans WHERE is_active = 1";
-        const request = pool.request();
-        
-        query += " ORDER BY price ASC";
-
-        const result = await request.query(query);
-        res.json(result.recordset);
+        // Luôn chỉ lấy các gói đang hoạt động cho mọi người xem
+        const sqlQuery = "SELECT plan_id, plan_name, description, price, duration_in_days, is_active, currency FROM SubscriptionPlans WHERE is_active = 1 ORDER BY price ASC";
+        const [rows] = await pool.query(sqlQuery);
+        res.json(rows);
     } catch (err) {
-        console.error("❌ Error in GET /subscription-plans:", err.message);
-        res.status(500).json({ message: "Server error" });
+        console.error("❌ Lỗi GET /subscription-plans:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
     }
 });
 
-/* ===========================================================
-   🟢 GET /api/subscription-plans/:id
-   → Lấy chi tiết gói đăng ký
-=========================================================== */
-/**
- * @swagger
- * /api/subscription-plans/{id}:
- *   get:
- *     summary: 🔍 Xem chi tiết một gói đăng ký
- *     tags: [SubscriptionPlans]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID của gói đăng ký
- *     responses:
- *       200:
- *         description: Thông tin chi tiết gói đăng ký
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SubscriptionPlan'
- *       404:
- *         description: Không tìm thấy gói đăng ký
- *       500:
- *         description: Lỗi máy chủ
- */
-router.get("/:id", verifyToken, async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("plan_id", sql.Int, req.params.id)
-      .query("SELECT * FROM SubscriptionPlans WHERE plan_id = @plan_id");
+// GET /api/subscription-plans/:id (Lấy chi tiết gói)
+router.get("/:id", verifyToken, async (req, res) => { // Giữ verifyToken vì có thể admin muốn xem cả gói inactive
+    try {
+        const planId = req.params.id;
+        const sqlQuery = "SELECT * FROM SubscriptionPlans WHERE plan_id = ?";
+        const [rows] = await pool.query(sqlQuery, [planId]);
 
-    if (result.recordset.length === 0)
-      return res.status(404).json({ message: "Subscription plan not found." });
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "Không tìm thấy gói đăng ký." });
+        }
 
-    res.json(result.recordset[0]);
-  } catch (err) {
-    console.error("❌ Error in GET /subscription-plans/:id:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
+        // Nếu người dùng là customer và gói không active, cũng báo not found
+        if (req.user.role === 'customer' && !rows[0].is_active) {
+             return res.status(404).json({ message: "Không tìm thấy gói đăng ký." });
+        }
+
+        res.json(rows[0]);
+    } catch (err) {
+        console.error("❌ Lỗi GET /subscription-plans/:id:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
 });
 
-/* ===========================================================
-   🟡 POST /api/subscription-plans/create
-   → Tạo mới gói đăng ký (Admin/Employee)
-=========================================================== */
-/**
- * @swagger
- * /api/subscription-plans/create:
- *   post:
- *     summary: ➕ Tạo mới gói đăng ký học
- *     tags: [SubscriptionPlans]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - plan_name
- *               - price
- *               - duration_in_days
- *             properties:
- *               plan_name:
- *                 type: string
- *                 example: "Gói học 6 tháng"
- *               description:
- *                 type: string
- *                 example: "Bao gồm tất cả khóa học, không giới hạn"
- *               price:
- *                 type: number
- *                 example: 499000
- *               duration_in_days:
- *                 type: integer
- *                 example: 180
- *               is_active:
- *                 type: boolean
- *                 example: true
- *     responses:
- *       201:
- *         description: ✅ Gói đăng ký được tạo thành công
- *       400:
- *         description: Thiếu thông tin bắt buộc
- *       500:
- *         description: Lỗi máy chủ
- */
+// POST /api/subscription-plans/create (Tạo gói mới - Admin/Employee)
 router.post("/create", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-  const { plan_name, description, price, duration_in_days, is_active = true } = req.body;
+    const { plan_name, description, price, duration_in_days, is_active = true } = req.body; // Mặc định is_active là true
 
-  if (!plan_name || !price || !duration_in_days) {
-    return res
-      .status(400)
-      .json({ message: "Missing required fields: plan_name, price, duration_in_days." });
-  }
+    if (!plan_name || price === undefined || !duration_in_days) {
+        return res.status(400).json({ message: "Thiếu trường bắt buộc: plan_name, price, duration_in_days." });
+    }
 
-  try {
-    const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("plan_name", sql.NVarChar(50), plan_name)
-      .input("description", sql.NVarChar(255), description)
-      .input("price", sql.Decimal(10, 0), price)
-      .input("currency", sql.VarChar(3), "VND")
-      .input("duration_in_days", sql.Int, duration_in_days)
-      .input("is_active", sql.Bit, is_active)
-      .query(`
-        INSERT INTO SubscriptionPlans (plan_name, description, price, duration_in_days, is_active)
-        OUTPUT INSERTED.*
-        VALUES (@plan_name, @description, @price, @duration_in_days, @is_active)
-      `);
+    try {
+        const sqlInsert = `
+            INSERT INTO SubscriptionPlans (plan_name, description, price, currency, duration_in_days, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())
+        `;
+        // Chuyển is_active sang 1 hoặc 0
+        const isActiveBit = is_active ? 1 : 0;
+        const [result] = await pool.query(sqlInsert, [
+            plan_name, description || null, price, 'VND', duration_in_days, isActiveBit
+        ]);
 
-    res.status(201).json(result.recordset[0]);
-  } catch (err) {
-    console.error("❌ Error in POST /subscription-plans:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
+        // Lấy lại bản ghi vừa tạo để trả về (tùy chọn)
+        const [newPlanRows] = await pool.query("SELECT * FROM SubscriptionPlans WHERE plan_id = ?", [result.insertId]);
+
+        res.status(201).json(newPlanRows[0]);
+
+    } catch (err) {
+        console.error("❌ Lỗi POST /subscription-plans/create:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
 });
 
-/* ===========================================================
-   🟠 PUT /api/subscription-plans/:id
-   → Cập nhật thông tin gói đăng ký
-=========================================================== */
-/**
- * @swagger
- * /api/subscription-plans/{id}:
- *   put:
- *     summary: 🛠️ Cập nhật thông tin gói đăng ký học
- *     tags: [SubscriptionPlans]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID của gói đăng ký
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               plan_name:
- *                 type: string
- *                 example: "Gói học 12 tháng (VIP)"
- *               description:
- *                 type: string
- *                 example: "Gói học cao cấp cho thành viên thân thiết"
- *               price:
- *                 type: number
- *                 example: 899000
- *               duration_in_days:
- *                 type: integer
- *                 example: 365
- *               is_active:
- *                 type: boolean
- *                 example: true
- *     responses:
- *       200:
- *         description: ✅ Cập nhật thành công
- *       400:
- *         description: Thiếu hoặc sai dữ liệu
- *       404:
- *         description: Không tìm thấy gói đăng ký
- *       500:
- *         description: Lỗi máy chủ
- */
+// PUT /api/subscription-plans/:id (Cập nhật gói - Admin/Employee)
 router.put("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-  if (Object.keys(req.body).length === 0)
-    return res.status(400).json({ message: "No fields to update provided." });
-
-  try {
-    const pool = await poolPromise;
-    const { plan_name, description, price, duration_in_days, is_active } = req.body;
-
-    const setClauses = [];
-    const request = pool.request().input("plan_id", sql.Int, req.params.id);
-
-    if (plan_name !== undefined) {
-      setClauses.push("plan_name = @plan_name");
-      request.input("plan_name", sql.NVarChar(50), plan_name);
-    }
-    if (description !== undefined) {
-      setClauses.push("description = @description");
-      request.input("description", sql.NVarChar(255), description);
-    }
-    if (price !== undefined) {
-      setClauses.push("price = @price");
-      request.input("price", sql.Decimal(10, 2), price);
-    }
-    if (duration_in_days !== undefined) {
-      setClauses.push("duration_in_days = @duration_in_days");
-      request.input("duration_in_days", sql.Int, duration_in_days);
-    }
-    if (is_active !== undefined) {
-      setClauses.push("is_active = @is_active");
-      request.input("is_active", sql.Bit, is_active);
+    if (Object.keys(req.body).length === 0) {
+        return res.status(400).json({ message: "Không có trường nào để cập nhật." });
     }
 
-    const query = `UPDATE SubscriptionPlans SET ${setClauses.join(", ")} WHERE plan_id = @plan_id`;
-    const result = await request.query(query);
+    try {
+        const planId = req.params.id;
+        const { plan_name, description, price, duration_in_days, is_active } = req.body;
 
-    if (result.rowsAffected[0] === 0)
-      return res.status(404).json({ message: "Subscription plan not found." });
+        const setClauses = [];
+        const params = [];
 
-    res.json({ message: "✅ Subscription plan updated successfully." });
-  } catch (err) {
-    console.error("❌ Error in PUT /subscription-plans/:id:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
+        if (plan_name !== undefined) { setClauses.push("plan_name = ?"); params.push(plan_name); }
+        if (description !== undefined) { setClauses.push("description = ?"); params.push(description); }
+        if (price !== undefined) { setClauses.push("price = ?"); params.push(price); }
+        if (duration_in_days !== undefined) { setClauses.push("duration_in_days = ?"); params.push(duration_in_days); }
+        if (is_active !== undefined) { setClauses.push("is_active = ?"); params.push(is_active ? 1 : 0); } // Chuyển boolean thành 1/0
+
+        if (setClauses.length === 0) {
+            return res.status(400).json({ message: "Không có trường hợp lệ để cập nhật." });
+        }
+
+        params.push(planId); // Thêm plan_id vào cuối cho WHERE
+
+        const sqlUpdate = `UPDATE SubscriptionPlans SET ${setClauses.join(", ")} WHERE plan_id = ?`;
+        const [result] = await pool.query(sqlUpdate, params);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Không tìm thấy gói đăng ký." });
+        }
+
+        res.json({ message: "✅ Cập nhật gói đăng ký thành công." });
+    } catch (err) {
+        console.error("❌ Lỗi PUT /subscription-plans/:id:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
 });
 
-
+// DELETE /api/subscription-plans/:id (Xóa gói - Admin/Employee)
 router.delete("/:id", verifyToken, authorizeRoles("admin", "employee"), async (req, res) => {
-  try {
-    const planIdToDelete = req.params.id;
-    const pool = await poolPromise;
+    try {
+        const planIdToDelete = req.params.id;
 
-  // 🛡️ Bước 1: Kiểm tra xem có UserSubscriptions nào đang tham chiếu đến plan này không
-    const userSubCheck = await pool.request()
-    .input('plan_id', sql.Int, planIdToDelete)
-    .query("SELECT COUNT(*) AS count FROM UserSubscriptions WHERE plan_id = @plan_id");
-      if (userSubCheck.recordset[0].count > 0) {
-        return res.status(400).json({
-          message: "Cannot delete this plan.",
-          reason: "One or more users are currently subscribed to this plan."
-        });
-    } 
+        // Kiểm tra UserSubscriptions
+        const [userSubRows] = await pool.query("SELECT COUNT(*) AS count FROM UserSubscriptions WHERE plan_id = ?", [planIdToDelete]);
+        if (userSubRows[0].count > 0) {
+            return res.status(400).json({ message: "Không thể xóa gói này.", reason: "Có người dùng đang hoặc đã đăng ký gói này." });
+        }
 
-    // 🛡️ Bước 2: Kiểm tra xem có Payments nào đang tham chiếu đến plan này không
-    const paymentCheck = await pool.request()
-      .input('plan_id', sql.Int, planIdToDelete)
-      .query("SELECT COUNT(*) AS count FROM Payments WHERE plan_id = @plan_id");
+        // Kiểm tra Payments
+        const [paymentRows] = await pool.query("SELECT COUNT(*) AS count FROM Payments WHERE plan_id = ?", [planIdToDelete]);
+        if (paymentRows[0].count > 0) {
+            return res.status(400).json({ message: "Không thể xóa gói này.", reason: "Có lịch sử thanh toán liên quan đến gói này." });
+        }
 
-    if (paymentCheck.recordset[0].count > 0) {
-      return res.status(400).json({
-        message: "Cannot delete this plan.",
-        reason: "There is payment history associated with this plan."
-      });
-  }
+        // Tiến hành xóa
+        const [result] = await pool.query("DELETE FROM SubscriptionPlans WHERE plan_id = ?", [planIdToDelete]);
 
-    // ✅ Bước 3: Nếu không có tham chiếu, tiến hành xóa
-    const result = await pool.request()
-    .input("plan_id", sql.Int, planIdToDelete)
-    .query("DELETE FROM SubscriptionPlans WHERE plan_id = @plan_id");
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Không tìm thấy gói đăng ký." });
+        }
 
-  if (result.rowsAffected[0] === 0) {
-    return res.status(404).json({ message: "Subscription plan not found." });
-  }
+        res.json({ message: "✅ Xóa gói đăng ký thành công." });
 
-  res.json({ message: "✅ Subscription plan deleted successfully." });
-
-  } catch (err) {
-    console.error("❌ Error in DELETE /subscription-plans/:id:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
+    } catch (err) {
+        console.error("❌ Lỗi DELETE /subscription-plans/:id:", err.message);
+        // Bắt lỗi khóa ngoại nếu có
+        if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+             return res.status(400).json({ message: "Không thể xóa gói do ràng buộc dữ liệu.", reason: "Lỗi khóa ngoại." });
+        }
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
 });
-
 
 module.exports = router;
