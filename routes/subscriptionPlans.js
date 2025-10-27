@@ -7,6 +7,18 @@ const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 router.get("/", async (req, res) => {
     try {
         // Luôn chỉ lấy các gói đang hoạt động cho mọi người xem
+        const sqlQuery = "SELECT plan_id, plan_name, description, price, duration_in_days, is_active, currency FROM SubscriptionPlans";
+        const [rows] = await pool.query(sqlQuery);
+        res.json(rows);
+    } catch (err) {
+        console.error("❌ Lỗi GET /subscription-plans:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
+});
+// GET /api/subscription-plans (Lấy danh sách gói)
+router.get("/active", async (req, res) => {
+    try {
+        // Luôn chỉ lấy các gói đang hoạt động cho mọi người xem
         const sqlQuery = "SELECT plan_id, plan_name, description, price, duration_in_days, is_active, currency FROM SubscriptionPlans WHERE is_active = 1 ORDER BY price ASC";
         const [rows] = await pool.query(sqlQuery);
         res.json(rows);
