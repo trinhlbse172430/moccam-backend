@@ -26,14 +26,48 @@ router.get("/", verifyToken, async (req, res) => {
 router.get("/:id", verifyToken, async (req, res) => {
     try {
         const lessonId = req.params.id;
-        const sqlQuery = "SELECT * FROM Lessons WHERE lesson_id = ?";
-        const [rows] = await pool.query(sqlQuery, [lessonId]);
+        const userId = req.user.id;
+        const userRole = req.user.role;
 
-        if (rows.length === 0) {
+        // 1. Lấy thông tin bài học
+        const [lessonRows] = await pool.query("SELECT * FROM Lessons WHERE lesson_id = ?", [lessonId]);
+        if (lessonRows.length === 0) {
             return res.status(404).json({ message: "Không tìm thấy bài học" });
         }
+        const lesson = lessonRows[0];
 
-        res.json(rows[0]);
+        // 2. 🛡️ KIỂM TRA QUYỀN TRUY CẬP
+        // Admin/Employee luôn có quyền xem
+        if (userRole === 'admin' || userRole === 'employee') {
+            return res.json(lesson);
+        }
+
+        // Customer: Kiểm tra nếu bài học là miễn phí
+        if (lesson.is_free === 1) { // 1 là true trong MySQL/Bit
+            return res.json(lesson);
+        }
+
+        // Nếu bài học không miễn phí, kiểm tra gói đăng ký
+        const [subRows] = await pool.query(`
+            SELECT user_subscription_id 
+            FROM UserSubscriptions 
+            WHERE user_id = ? 
+              AND status = 'active' 
+              AND NOW() BETWEEN start_date AND end_date
+            LIMIT 1;
+        `, [userId]);
+
+        if (subRows.length === 0) {
+            // Không có gói active -> Không được xem
+            return res.status(403).json({ 
+                message: "Bạn cần đăng ký gói thành viên để xem bài học này.",
+                accessDenied: true 
+            });
+        }
+
+        // Có gói active -> Được xem
+        res.json(lesson);
+
     } catch (err) {
         console.error("❌ Lỗi GET /lessons/:id:", err.message);
         res.status(500).json({ message: "Lỗi máy chủ" });

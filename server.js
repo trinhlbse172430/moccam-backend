@@ -1,108 +1,82 @@
 const express = require("express");
-const app = express();
-const PORT = 3000;
+const cors = require('cors');
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+require('dotenv').config(); 
+
+// Import Swagger (giả sử đường dẫn đúng)
 const { swaggerUi, specs } = require("./config/swagger");
 
+// Import các router
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/users");
+const courseRoutes = require("./routes/courses");
+const lessonRoutes = require("./routes/lessons");
+const resourceRoutes = require("./routes/resources");
+const aiModelRoutes = require("./routes/ai_models");
+const handMotionRoutes = require("./routes/hand_motions");
+const commentRoutes = require("./routes/comments");
+const customerProgressRoutes = require("./routes/customer_progress"); 
+const notificationRoutes = require("./routes/notifications");
+const subscriptionPlanRoutes = require("./routes/subscriptionPlans");
+const userSubscriptionRoutes = require("./routes/userSubscriptions");
+const voucherRoutes = require("./routes/vouchers");
+const paymentRoutes = require("./routes/payments");
+const leaderboardRoutes = require("./routes/leaderboard");
+const lessonProgressRoutes = require("./routes/lessonProgress");
+const userActivityLogRoutes = require("./routes/userActivityLog");
+const dashboardRoutes = require("./routes/dashboard");
+
+const app = express();
+
+// --- Middleware Setup ---
+// 1. CORS: Cho phép truy cập từ mọi frontend (NÊN đặt đầu tiên)
+app.use(cors());
+
+// 2. Helmet: Thêm các header bảo mật cơ bản
+app.use(helmet());
+
+// 3. Body Parser: Xử lý request body dạng JSON (Quan trọng: Đặt trước routes)
 app.use(express.json());
 
+// 4. Rate Limiter: Giới hạn số lượng request
+app.use(rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 phút
+    max: 100, // Giới hạn mỗi IP 100 requests mỗi windowMs
+    message: "Too many requests from this IP, please try again after 15 minutes"
+}));
 
-// Import route Users
-const userRoutes = require("./routes/users");
-app.use("/api/users", userRoutes);
-
-// Import route Courses
-const courseRoutes = require("./routes/courses");
-app.use("/api/courses", courseRoutes);
-
-// Import route Lessons
-const lessonRoutes = require("./routes/lessons");
-app.use("/api/lessons", lessonRoutes);
-
-// Import route Resources
-const resourceRoutes = require("./routes/resources");
-app.use("/api/resources", resourceRoutes);
-
-// Import route AI Models
-const aiModelRoutes = require("./routes/ai_models");
-app.use("/api/ai-models", aiModelRoutes);
-
-// Import route Hand Motions
-const handMotionRoutes = require("./routes/hand_motions");
-app.use("/api/hand-motions", handMotionRoutes);
-
-// Import route Comments
-const commentRoutes = require("./routes/comments");
-app.use("/api/comments", commentRoutes);
-
-// Import route Customer Progress
-const customerProgressRoutes = require("./routes/customer_progress");
-app.use("/api/customer-progress", customerProgressRoutes);
-
-// Import route Notifications
-const notificationRoutes = require("./routes/notifications");
-app.use("/api/notifications", notificationRoutes);
-
-// Import route Subscription Plans
-const subscriptionPlanRoutes = require("./routes/subscriptionPlans");
-app.use("/api/subscription-plans", subscriptionPlanRoutes);
-
-// Import route User Subscriptions  
-const userSubscriptionRoutes = require("./routes/userSubscriptions"); 
-app.use("/api/user-subscriptions", userSubscriptionRoutes);
-
-// Import route Vouchers
-const voucherRoutes = require("./routes/vouchers");
-app.use("/api/vouchers", voucherRoutes);
-
-// Import route Payments
-const paymentRoutes = require("./routes/payments");
-app.use("/api/payments", paymentRoutes);
-
-// Import route Auth
-const authRoutes = require("./routes/auth");
+// --- Routes Setup ---
 app.use("/api/auth", authRoutes);
-
-// Import route Leaderboard
-const leaderboardRoutes = require("./routes/leaderboard");
-app.use("/api", leaderboardRoutes);
-
-// Import route Lesson Progress
-const lessonProgressRoutes = require("./routes/lessonProgress");
+app.use("/api/users", userRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/lessons", lessonRoutes);
+app.use("/api/resources", resourceRoutes);
+app.use("/api/ai-models", aiModelRoutes);
+app.use("/api/hand-motions", handMotionRoutes);
+app.use("/api/comments", commentRoutes);
+app.use("/api/customer-progress", customerProgressRoutes); 
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/subscription-plans", subscriptionPlanRoutes);
+app.use("/api/user-subscriptions", userSubscriptionRoutes);
+app.use("/api/vouchers", voucherRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api", leaderboardRoutes); 
 app.use("/api/lesson-progress", lessonProgressRoutes);
-
-// Import route User Activity Log
-const userActivityLogRoutes = require("./routes/userActivityLog");
 app.use("/api/activity", userActivityLogRoutes);
-
-// Import route Dashboard
-const dashboardRoutes = require("./routes/dashboard");
 app.use("/api/dashboard", dashboardRoutes);
 
-// chặn XSS, clickjacking, sniffing
-const helmet = require("helmet");
-app.use(helmet()); 
-
-// cho phép truy cập từ frontend
-const cors = require("cors");
-app.use(cors()); 
-
-// giới hạn request
-const rateLimit = require("express-rate-limit");
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 })); 
-
-// Swagger UI
+// --- Swagger UI ---
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
-//
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-  console.log("Swagger Docs available at: http://localhost:3000/api-docs");
-});
 
-// Test API
+// --- Test Route ---
 app.get("/", (req, res) => {
     res.send("MocCam Backend is running...");
 });
 
+// --- Server Listening ---
+const PORT = process.env.PORT || 3000; // Sử dụng PORT từ .env hoặc mặc định 3000
 app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ Swagger Docs available at http://localhost:${PORT}/api-docs`);
 });

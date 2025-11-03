@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { pool } = require("../db"); // Import pool từ db.js mới
+const { pool } = require("../db"); 
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
 // GET /api/user-subscriptions (Lấy danh sách subscriptions)
@@ -103,4 +103,35 @@ router.put("/:id/cancel", verifyToken, authorizeRoles("admin", "employee", "cust
     }
 });
 
+//api/user-subscriptions/status:
+router.get("/status", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const sqlQuery = `
+            SELECT us.*, sp.plan_name
+            FROM UserSubscriptions us
+            JOIN SubscriptionPlans sp ON us.plan_id = sp.plan_id
+            WHERE 
+                us.user_id = ? 
+                AND us.status = 'active'
+                AND NOW() BETWEEN us.start_date AND us.end_date
+            ORDER BY us.end_date DESC
+            LIMIT 1;
+        `;
+
+        const [rows] = await pool.query(sqlQuery, [userId]);
+
+        if (rows.length === 0) {
+            // Người dùng không có gói nào đang hoạt động
+            return res.json({ isActive: false, subscription: null });
+        }
+        // Người dùng có gói đang hoạt động
+        res.json({ isActive: true, subscription: rows[0] });
+
+    } catch (err) {
+        console.error("❌ Lỗi GET /user-subscriptions/status:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
+});
 module.exports = router;
