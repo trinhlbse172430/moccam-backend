@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { pool } = require("../db"); // Import pool từ db.js mới
+const { pool } = require("../db");
 const { verifyToken, authorizeRoles } = require("../security/verifyToken");
 
 // GET /api/lessons/ping (Kiểm tra API)
@@ -12,7 +12,7 @@ router.get("/ping", (req, res) => {
 // Thêm verifyToken để chỉ người dùng đã đăng nhập mới xem được
 router.get("/", verifyToken, async (req, res) => {
     try {
-        const sqlQuery = "SELECT * FROM Lessons ORDER BY created_at DESC"; // Sắp xếp theo ngày tạo mới nhất
+        const sqlQuery = "SELECT * FROM Lessons ORDER BY created_at DESC";
         const [rows] = await pool.query(sqlQuery);
         res.json(rows);
     } catch (err) {
@@ -22,7 +22,6 @@ router.get("/", verifyToken, async (req, res) => {
 });
 
 // GET /api/lessons/:id (Lấy bài học theo ID)
-// Thêm verifyToken
 router.get("/:id", verifyToken, async (req, res) => {
     try {
         const lessonId = req.params.id;
@@ -70,6 +69,63 @@ router.get("/:id", verifyToken, async (req, res) => {
 
     } catch (err) {
         console.error("❌ Lỗi GET /lessons/:id:", err.message);
+        res.status(500).json({ message: "Lỗi máy chủ" });
+    }
+});
+
+
+// GET /api/lessons/course/:courseId (Lấy tất cả bài học của 1 khóa học)
+router.get("/course/:courseId", verifyToken, async (req, res) => {
+    try {
+        const courseId = req.params.courseId;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        // 1. Kiểm tra xem khóa học có tồn tại không
+        const [courseRows] = await pool.query("SELECT course_id, is_free FROM Courses WHERE course_id = ?", [courseId]);
+        if (courseRows.length === 0) {
+            return res.status(404).json({ message: "Không tìm thấy khóa học" });
+        }
+        
+        const course = courseRows[0];
+        let hasAccess = false;
+
+        // 2. 🛡️ KIỂM TRA QUYỀN TRUY CẬP KHÓA HỌC
+        if (userRole === 'admin' || userRole === 'employee' || course.is_free === 1) {
+            // Admin, Employee, hoặc khóa học miễn phí -> Luôn có quyền
+            hasAccess = true;
+        } else {
+            // Nếu là customer và khóa học có phí, kiểm tra gói
+            const [subRows] = await pool.query(`
+                SELECT user_subscription_id 
+                FROM UserSubscriptions 
+                WHERE user_id = ? AND status = 'active' AND NOW() BETWEEN start_date AND end_date
+                LIMIT 1;
+            `, [userId]);
+
+            if (subRows.length > 0) {
+                hasAccess = true; // Có gói active -> Có quyền
+            }
+        }
+
+        // 3. Nếu không có quyền, trả về lỗi 403
+        if (!hasAccess) {
+            return res.status(403).json({ 
+                message: "Bạn cần đăng ký gói thành viên để xem các bài học này.",
+                accessDenied: true 
+            });
+        }
+        
+        // 4. Nếu có quyền, lấy tất cả bài học thuộc khóa học đó
+        const [lessonRows] = await pool.query(
+            "SELECT * FROM Lessons WHERE course_id = ? ORDER BY created_at ASC", // Sắp xếp theo thứ tự tạo
+            [courseId]
+        );
+
+        res.json(lessonRows);
+
+    } catch (err) {
+        console.error("❌ Lỗi GET /lessons/course/:courseId:", err.message);
         res.status(500).json({ message: "Lỗi máy chủ" });
     }
 });
