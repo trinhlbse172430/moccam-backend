@@ -6,6 +6,7 @@ require('dotenv').config();
 
 // Import Swagger (giả sử đường dẫn đúng)
 const { swaggerUi, specs } = require("./config/swagger");
+const { startSubscriptionUpdater } = require('./services/jobScheduler');
 
 // Import các router
 const authRoutes = require("./routes/auth");
@@ -26,6 +27,7 @@ const leaderboardRoutes = require("./routes/leaderboard");
 const lessonProgressRoutes = require("./routes/lessonProgress");
 const userActivityLogRoutes = require("./routes/userActivityLog");
 const dashboardRoutes = require("./routes/dashboard");
+
 
 const app = express();
 
@@ -78,5 +80,6 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000; // Sử dụng PORT từ .env hoặc mặc định 3000
 app.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
+    startSubscriptionUpdater();
     console.log(`✅ Swagger Docs available at http://localhost:${PORT}/api-docs`);
 });

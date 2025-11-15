@@ -11,7 +11,6 @@ const payos = new PayOS(
   process.env.PAYOS_CHECKSUM_KEY
 );
 
-// POST /api/payments/payos/create (Tạo link thanh toán)
 router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req, res) => {
     const user_id = req.user.id;
     const { plan_id, voucher_id } = req.body;
@@ -20,9 +19,8 @@ router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req
         return res.status(400).json({ message: "Thiếu trường bắt buộc: plan_id" });
     }
 
-    let connection; // Khai báo connection ở ngoài để dùng trong finally
+    let connection; 
     try {
-        // Lấy kết nối từ pool
         connection = await pool.getConnection();
 
         // 1. Lấy thông tin gói
@@ -39,12 +37,12 @@ router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req
         const plan = planRows[0];
         let original_amount = plan.price;
         let discount_amount = 0;
-        let currentVoucherId = voucher_id || null; // Dùng voucher_id truyền vào hoặc null
+        let currentVoucherId = voucher_id || null;
 
         // 2. Kiểm tra voucher (nếu có)
         if (currentVoucherId) {
             const [voucherRows] = await connection.query(
-                "SELECT discount_value, used_count, max_usage FROM Vouchers WHERE voucher_id = ? AND NOW() BETWEEN start_date AND end_date", // Giả sử voucher có is_active = 1
+                "SELECT discount_value, used_count, max_usage FROM Vouchers WHERE voucher_id = ? AND NOW() BETWEEN start_date AND end_date",
                 [currentVoucherId]
             );
 
@@ -68,9 +66,10 @@ router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req
 
         // 4. Xử lý gói miễn phí (0đ)
         if (final_amount === 0) {
-            await connection.beginTransaction(); // Bắt đầu transaction cho gói 0đ
+            await connection.beginTransaction(); 
             try {
-                // Ghi nhận thanh toán success
+                
+                // === BƯỚC 1: GHI NHẬN THANH TOÁN 0Đ (BẠN ĐÃ THIẾU) ===
                 const paymentInsertSql = `
                     INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, payment_method, description, status, transaction_id, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
@@ -80,44 +79,58 @@ router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req
                     user_id, plan_id, currentVoucherId, original_amount, discount_amount, 0, 'Voucher', description, 'success', transactionIdFree
                 ]);
 
-                // Cập nhật voucher nếu có
+                // === BƯỚC 2: CẬP NHẬT VOUCHER (BẠN ĐÃ THIẾU) ===
                 if (currentVoucherId) {
                     await connection.query("UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = ?", [currentVoucherId]);
+                    console.log(`🎟️ Voucher [${currentVoucherId}] usage count incremented.`);
                 }
 
-                // Kích hoạt subscription
+                // === BƯỚC 3: KÍCH HOẠT & CỘNG DỒN GÓI (BẠN ĐÃ LÀM ĐÚNG) ===
+                const [activeSubRows] = await connection.query(
+                    "SELECT MAX(end_date) AS latest_end_date FROM UserSubscriptions WHERE user_id = ? AND status = 'active' AND end_date > NOW()",
+                    [user_id]
+                );
+
+                let new_start_date;
+                if (activeSubRows[0] && activeSubRows[0].latest_end_date) {
+                    new_start_date = activeSubRows[0].latest_end_date;
+                } else {
+                    new_start_date = new Date();
+                }
+
                 const [subPlanRows] = await connection.query("SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = ?", [plan_id]);
-                const duration = subPlanRows[0]?.duration_in_days || 30; // Mặc định 30 ngày nếu không tìm thấy
+                const duration = subPlanRows[0]?.duration_in_days || 30;
+
                 const subInsertSql = `
                     INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status)
-                    VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? DAY), 'active')
+                    VALUES (?, ?, ?, DATE_ADD(?, INTERVAL ? DAY), 'active')
                 `;
-                await connection.query(subInsertSql, [user_id, plan_id, duration]);
+                await connection.query(subInsertSql, [user_id, plan_id, new_start_date, new_start_date, duration]);
+                console.log(`✅ Activated/Stacked subscription plan ${plan_id} for user ${user_id}`);
+                
+                // === HẾT PHẦN SỬA ===
 
-                await connection.commit(); // Hoàn tất transaction
-                connection.release(); // Trả kết nối về pool
-                return res.status(200).json({ message: "✅ Voucher đã áp dụng. Gói của bạn đã được kích hoạt miễn phí!", orderCode: null, checkoutUrl: null });
-
+                await connection.commit(); 
+                connection.release(); 
+                return res.status(200).json({ message: "✅ Voucher đã áp dụng. Gói của bạn đã được kích hoạt!", orderCode: null, checkoutUrl: null });
             } catch (err) {
-                await connection.rollback(); // Rollback nếu có lỗi
+                await connection.rollback(); 
                 connection.release();
-                throw err; // Ném lỗi ra ngoài để khối catch bên ngoài xử lý
+                throw err; 
             }
         }
 
         // 5. Xử lý gói có phí (> 0đ)
-        const orderCode = Date.now().toString(); // Chuyển sang chuỗi
+        const orderCode = Date.now().toString(); 
 
-        // 5.1 Tạo link PayOS trước
         const paymentLink = await payos.paymentRequests.create({
-            orderCode: parseInt(orderCode), // PayOS yêu cầu number
+            orderCode: parseInt(orderCode), 
             amount: final_amount,
             description: descriptionForPayOS,
             returnUrl: process.env.PAYOS_RETURN_URL,
             cancelUrl: process.env.PAYOS_CANCEL_URL,
         });
 
-        // 5.2 Lưu vào DB sau khi có link
         const paymentInsertSqlPaid = `
             INSERT INTO Payments (user_id, plan_id, voucher_id, original_amount, discount_amount, final_amount, payment_method, description, status, transaction_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
@@ -126,15 +139,15 @@ router.post("/payos/create", verifyToken, authorizeRoles("customer"), async (req
             user_id, plan_id, currentVoucherId, original_amount, discount_amount, final_amount, 'PayOS', description, 'pending', orderCode
         ]);
 
-        connection.release(); // Trả kết nối về pool
+        connection.release(); 
         res.json({
             message: "✅ Tạo link thanh toán PayOS thành công",
             checkoutUrl: paymentLink.checkoutUrl,
-            orderCode: orderCode, // Trả về dạng chuỗi
+            orderCode: orderCode, 
         });
 
     } catch (err) {
-        if (connection) connection.release(); // Đảm bảo trả kết nối nếu có lỗi
+        if (connection) connection.release(); 
         console.error("❌ Lỗi /payos/create:", err.message);
         res.status(500).json({ message: "Lỗi máy chủ", error: err.message });
     }
@@ -156,65 +169,75 @@ router.get("/payos/return", async (req, res) => {
         await connection.beginTransaction();
 
         try {
-            // Cập nhật trạng thái Payment
+            // Bước 1: Cập nhật trạng thái Payment (CHỈ KHI CÒN PENDING)
+            // Đây là bước quan trọng nhất để chống trùng lặp khi F5
             const [updateResult] = await connection.query(
-                "UPDATE Payments SET status = ? WHERE transaction_id = ?",
+                "UPDATE Payments SET status = ? WHERE transaction_id = ? AND status = 'pending'",
                 [paymentStatus, orderCode]
             );
 
-             if (updateResult.affectedRows === 0) {
-                 // Có thể giao dịch đã được xử lý bởi webhook (nếu dùng) hoặc orderCode sai
-                 console.warn(`Payment record not found or already updated for orderCode: ${orderCode}`);
-                 // Vẫn nên commit để không rollback các thay đổi khác (nếu có)
-                 // Hoặc có thể rollback tùy logic của bạn
-             } else {
-                 console.log(`✅ Payment [${orderCode}] updated to ${paymentStatus}`);
-             }
+            // Bước 2: Chỉ xử lý nếu đây là lần đầu tiên giao dịch được cập nhật
+            if (updateResult.affectedRows > 0) {
+                console.log(`✅ Payment [${orderCode}] updated to ${paymentStatus}. Processing...`);
 
-
-            // Kích hoạt Subscription và cập nhật Voucher nếu thành công
-            if (paymentStatus === 'success') {
-                const [paymentRows] = await connection.query(
-                    "SELECT user_id, plan_id, voucher_id FROM Payments WHERE transaction_id = ?",
-                    [orderCode]
-                );
-
-                if (paymentRows.length === 0) throw new Error(`Payment record inconsistency for orderCode: ${orderCode}`);
-
-                const { user_id, plan_id, voucher_id } = paymentRows[0];
-
-                // Cập nhật Voucher nếu có
-                if (voucher_id) {
-                    await connection.query(
-                        "UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = ?",
-                        [voucher_id]
+                // Bước 3: Kích hoạt Subscription và cập nhật Voucher nếu thanh toán THÀNH CÔNG
+                if (paymentStatus === 'success') {
+                    // 3a. Lấy thông tin thanh toán
+                    const [paymentRows] = await connection.query(
+                        "SELECT user_id, plan_id, voucher_id FROM Payments WHERE transaction_id = ?",
+                        [orderCode]
                     );
-                    console.log(`🎟️ Voucher [${voucher_id}] usage count incremented.`);
-                }
+                    if (paymentRows.length === 0) throw new Error(`Payment record inconsistency: ${orderCode}`);
+                    
+                    const { user_id, plan_id, voucher_id } = paymentRows[0];
 
-                // Kích hoạt Subscription (chống trùng lặp)
-                const [existingSubRows] = await connection.query(
-                    "SELECT user_subscription_id FROM UserSubscriptions WHERE user_id = ? AND plan_id = ? AND start_date >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)",
-                    [user_id, plan_id]
-                );
+                    // 3b. Cập nhật Voucher (nếu có)
+                    if (voucher_id) {
+                        await connection.query(
+                            "UPDATE Vouchers SET used_count = used_count + 1 WHERE voucher_id = ?",
+                            [voucher_id]
+                        );
+                        console.log(`🎟️ Voucher [${voucher_id}] usage count incremented.`);
+                    }
 
-                if (existingSubRows.length === 0) {
+                    // 3c. LOGIC CỘNG DỒN GÓI
+                    // Tìm ngày hết hạn (end_date) xa nhất của gói đang active (nếu có)
+                    const [activeSubRows] = await connection.query(
+                        "SELECT MAX(end_date) AS latest_end_date FROM UserSubscriptions WHERE user_id = ? AND status = 'active' AND end_date > NOW()",
+                        [user_id]
+                    );
+
+                    let new_start_date;
+                    if (activeSubRows[0] && activeSubRows[0].latest_end_date) {
+                        // Nếu có gói active, ngày bắt đầu mới = ngày kết thúc cũ
+                        new_start_date = new Date(activeSubRows[0].latest_end_date);
+                    } else {
+                        // Nếu không có, ngày bắt đầu mới = bây giờ
+                        new_start_date = new Date(); // Tương đương NOW()
+                    }
+
+                    // 3d. Lấy thời hạn (duration) của gói VỪA MUA
                     const [subPlanRows] = await connection.query(
                         "SELECT duration_in_days FROM SubscriptionPlans WHERE plan_id = ?",
                         [plan_id]
                     );
                     if (subPlanRows.length === 0) throw new Error(`Plan details not found: ${plan_id}`);
-
+                    
                     const duration = subPlanRows[0].duration_in_days;
+
+                    // 3e. Thêm UserSubscription mới
+                    // Ngày kết thúc = new_start_date + duration
                     const subInsertSql = `
                         INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, status)
-                        VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? DAY), 'active')
+                        VALUES (?, ?, ?, DATE_ADD(?, INTERVAL ? DAY), 'active')
                     `;
-                    await connection.query(subInsertSql, [user_id, plan_id, duration]);
-                    console.log(`✅ Activated subscription plan ${plan_id} for user ${user_id}`);
-                } else {
-                     console.log(`ℹ️ Subscription for user ${user_id}, plan ${plan_id} already activated recently.`);
+                    await connection.query(subInsertSql, [user_id, plan_id, new_start_date, new_start_date, duration]);
+                    
+                    console.log(`✅ Activated/Stacked subscription plan ${plan_id} for user ${user_id}`);
                 }
+            } else {
+                // updateResult.affectedRows === 0
+                console.log(`ℹ️ Payment [${orderCode}] was already processed or not found. Skipping logic.`);
             }
 
             await connection.commit(); // Hoàn tất transaction
@@ -225,6 +248,7 @@ router.get("/payos/return", async (req, res) => {
              if(connection) connection.release(); // Luôn trả kết nối sau transaction
         }
 
+        // Bước 4: Chuyển hướng người dùng về frontend
         return res.redirect(`${process.env.FRONTEND_URL}/home`);
     } catch (err) {
         if (connection) connection.release(); // Đảm bảo trả kết nối nếu có lỗi ngoài transaction
