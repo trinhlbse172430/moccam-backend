@@ -173,10 +173,7 @@ router.delete("/:id", verifyToken, authorizeRoles("admin"), async (req, res) => 
             { table: "Vouchers", column: "created_by", message: "Người dùng đã tạo voucher. Vui lòng gán lại hoặc xóa voucher trước." },
             { table: "Notifications", column: "user_id", message: "Người dùng có thông báo cá nhân." },
             { table: "Comments", column: "user_id", message: "Người dùng đã bình luận." },
-            { table: "LessonProgress", column: "user_id", message: "Người dùng có tiến độ học." },
-            { table: "AIPracticeSessions", column: "user_id", message: "Người dùng có lịch sử luyện tập AI." },
-            { table: "UserActivityLog", column: "user_id", message: "Người dùng có log hoạt động." },
-            { table: "Leaderboard", column: "user_id", message: "Người dùng có trong bảng xếp hạng." }
+            { table: "LessonProgress", column: "user_id", message: "Người dùng có tiến độ học." }
             // Thêm các bảng khác nếu cần
         ];
 
