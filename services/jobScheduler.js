@@ -16,7 +16,8 @@ const startSubscriptionUpdater = () => {
                 SET status = 'expired'
                 WHERE
                     end_date < NOW()
-                    AND status = 'active';
+                    AND status = 'active'
+                    AND user_subscription_id > 0;
             `;
             
             connection = await pool.getConnection();
